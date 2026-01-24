@@ -12,6 +12,10 @@ from app.models import (
     EpisodeJob,
     EpisodeStatus,
     FactBank,
+    FactCard,
+    PublishJob,
+    PublishStatus,
+    AppSetting,
     StepName,
     StepRun,
     StepStatus,
@@ -213,6 +217,69 @@ def get_fact_bank_by_tags(session, tags: List[str], limit: int = 5) -> List[Fact
         .limit(limit)
     )
     return list(session.execute(stmt).scalars())
+
+
+def get_fact_cards(session, domain: str, tags: List[str], limit: int = 10) -> List[FactCard]:
+    stmt = select(FactCard).where(FactCard.domain == domain)
+    if tags:
+        stmt = stmt.where(FactCard.tags.overlap(tags))
+    stmt = stmt.limit(limit)
+    return list(session.execute(stmt).scalars())
+
+
+def create_publish_job(
+    session,
+    job_id: UUID,
+    platform: str,
+    scheduled_for=None,
+    payload_json: Optional[dict] = None,
+):
+    publish_job = PublishJob(
+        episode_job_id=job_id,
+        platform=platform,
+        status=PublishStatus.pending,
+        scheduled_for=scheduled_for,
+        payload_json=payload_json,
+    )
+    session.add(publish_job)
+    session.commit()
+    session.refresh(publish_job)
+    return publish_job
+
+
+def list_publish_jobs(session, limit: int = 50) -> List[PublishJob]:
+    stmt = select(PublishJob).order_by(PublishJob.created_at.desc()).limit(limit)
+    return list(session.execute(stmt).scalars())
+
+
+def update_publish_job(session, publish_job_id: UUID, status: PublishStatus, payload_json=None, error_text=None):
+    job = session.get(PublishJob, publish_job_id)
+    if not job:
+        return None
+    job.status = status
+    if payload_json is not None:
+        job.payload_json = payload_json
+    if error_text is not None:
+        job.error_text = error_text
+    session.commit()
+    return job
+
+
+def get_setting(session, key: str) -> Optional[AppSetting]:
+    stmt = select(AppSetting).where(AppSetting.key == key)
+    return session.execute(stmt).scalars().first()
+
+
+def set_setting(session, key: str, value_json: dict):
+    setting = get_setting(session, key)
+    if setting:
+        setting.value_json = value_json
+    else:
+        setting = AppSetting(key=key, value_json=value_json)
+        session.add(setting)
+    session.commit()
+    session.refresh(setting)
+    return setting
 
 
 def create_budget_entry(

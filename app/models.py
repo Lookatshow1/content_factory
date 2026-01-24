@@ -27,12 +27,17 @@ class EpisodeStatus(str, enum.Enum):
 
 
 class StepName(str, enum.Enum):
+    idea = "idea"
     object = "object"
+    research = "research"
     factpack = "factpack"
     script = "script"
     storyboard = "storyboard"
+    tts = "tts"
+    captions = "captions"
+    render_final = "render_final"
+    publish_outbox = "publish_outbox"
     clip = "clip"
-    idea = "idea"
 
 
 class StepStatus(str, enum.Enum):
@@ -44,11 +49,15 @@ class StepStatus(str, enum.Enum):
 
 class ArtifactKind(str, enum.Enum):
     ObjectSpec = "ObjectSpec"
+    IdeaSpec = "IdeaSpec"
     FactPack = "FactPack"
     ScriptSpec = "ScriptSpec"
     Storyboard = "Storyboard"
+    VoiceoverAudio = "VoiceoverAudio"
+    CaptionsSRT = "CaptionsSRT"
+    CaptionsASS = "CaptionsASS"
     Clip = "Clip"
-    IdeaSpec = "IdeaSpec"
+    ClipFinal = "ClipFinal"
 
 
 class EpisodeJob(Base):
@@ -140,3 +149,48 @@ class FactBank(Base):
     evidence_snippet = Column(String, nullable=True)
     reliability = Column(String, nullable=True)
     tags = Column(ARRAY(String), nullable=True)
+
+
+class FactCard(Base):
+    __tablename__ = "fact_card"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    domain = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    claim_lines = Column(JSONB, nullable=False)
+    sources = Column(JSONB, nullable=False)
+    tags = Column(ARRAY(String), nullable=True)
+    language = Column(String, default="ru")
+
+
+class PublishStatus(str, enum.Enum):
+    pending = "pending"
+    uploading = "uploading"
+    processing = "processing"
+    done = "done"
+    failed = "failed"
+    manual_required = "manual_required"
+
+
+class PublishJob(Base):
+    __tablename__ = "publish_job"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    episode_job_id = Column(UUID(as_uuid=True), ForeignKey("episode_job.id"), nullable=False)
+    platform = Column(String, nullable=False)
+    status = Column(Enum(PublishStatus, name="publish_status"), default=PublishStatus.pending)
+    scheduled_for = Column(DateTime(timezone=True), nullable=True)
+    payload_json = Column(JSONB, nullable=True)
+    error_text = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    episode_job = relationship("EpisodeJob")
+
+
+class AppSetting(Base):
+    __tablename__ = "app_setting"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    key = Column(String, nullable=False, unique=True)
+    value_json = Column(JSONB, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
