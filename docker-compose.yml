@@ -1,0 +1,183 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-svf}
+      TZ: ${TZ:-Europe/Amsterdam}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      TZ: ${TZ:-Europe/Amsterdam}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+      RUN_TIMES: ${RUN_TIMES:-09:30,13:30,18:30}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      LLM_PROVIDER_PRIMARY: ${LLM_PROVIDER_PRIMARY:-yandex}
+      LLM_PROVIDER_FALLBACK: ${LLM_PROVIDER_FALLBACK:-openrouter}
+      LLM_MODEL_RESEARCHER: ${LLM_MODEL_RESEARCHER:-}
+      LLM_MODEL_WRITER: ${LLM_MODEL_WRITER:-}
+      LLM_MODEL_EDITOR: ${LLM_MODEL_EDITOR:-}
+      LLM_MODEL_JUDGE: ${LLM_MODEL_JUDGE:-}
+      LLM_MODEL_FALLBACK: ${LLM_MODEL_FALLBACK:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1200}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.6}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
+      YANDEX_BASE_URL: ${YANDEX_BASE_URL:-https://llm.api.cloud.yandex.net/v1}
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
+      YANDEX_MODEL: ${YANDEX_MODEL:-gpt://__FOLDER__/yandexgpt/latest}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}
+      OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER:-}
+      OPENROUTER_X_TITLE: ${OPENROUTER_X_TITLE:-}
+      REPEAT_SIMILARITY_THRESHOLD: ${REPEAT_SIMILARITY_THRESHOLD:-0.55}
+      SERIES_MODE: ${SERIES_MODE:-round_robin}
+      FACT_MODE: ${FACT_MODE:-bank_only}
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  worker:
+    build: ./worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+      RUN_TIMES: ${RUN_TIMES:-09:30,13:30,18:30}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      LLM_PROVIDER_PRIMARY: ${LLM_PROVIDER_PRIMARY:-yandex}
+      LLM_PROVIDER_FALLBACK: ${LLM_PROVIDER_FALLBACK:-openrouter}
+      LLM_MODEL_RESEARCHER: ${LLM_MODEL_RESEARCHER:-}
+      LLM_MODEL_WRITER: ${LLM_MODEL_WRITER:-}
+      LLM_MODEL_EDITOR: ${LLM_MODEL_EDITOR:-}
+      LLM_MODEL_JUDGE: ${LLM_MODEL_JUDGE:-}
+      LLM_MODEL_FALLBACK: ${LLM_MODEL_FALLBACK:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1200}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.6}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
+      YANDEX_BASE_URL: ${YANDEX_BASE_URL:-https://llm.api.cloud.yandex.net/v1}
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
+      YANDEX_MODEL: ${YANDEX_MODEL:-gpt://__FOLDER__/yandexgpt/latest}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}
+      OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER:-}
+      OPENROUTER_X_TITLE: ${OPENROUTER_X_TITLE:-}
+      REPEAT_SIMILARITY_THRESHOLD: ${REPEAT_SIMILARITY_THRESHOLD:-0.55}
+      SERIES_MODE: ${SERIES_MODE:-round_robin}
+      FACT_MODE: ${FACT_MODE:-bank_only}
+
+  scheduler:
+    build: ./scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+      RUN_TIMES: ${RUN_TIMES:-09:30,13:30,18:30}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      LLM_PROVIDER_PRIMARY: ${LLM_PROVIDER_PRIMARY:-yandex}
+      LLM_PROVIDER_FALLBACK: ${LLM_PROVIDER_FALLBACK:-openrouter}
+      LLM_MODEL_RESEARCHER: ${LLM_MODEL_RESEARCHER:-}
+      LLM_MODEL_WRITER: ${LLM_MODEL_WRITER:-}
+      LLM_MODEL_EDITOR: ${LLM_MODEL_EDITOR:-}
+      LLM_MODEL_JUDGE: ${LLM_MODEL_JUDGE:-}
+      LLM_MODEL_FALLBACK: ${LLM_MODEL_FALLBACK:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1200}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.6}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
+      YANDEX_BASE_URL: ${YANDEX_BASE_URL:-https://llm.api.cloud.yandex.net/v1}
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
+      YANDEX_MODEL: ${YANDEX_MODEL:-gpt://__FOLDER__/yandexgpt/latest}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}
+      OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER:-}
+      OPENROUTER_X_TITLE: ${OPENROUTER_X_TITLE:-}
+      REPEAT_SIMILARITY_THRESHOLD: ${REPEAT_SIMILARITY_THRESHOLD:-0.55}
+      SERIES_MODE: ${SERIES_MODE:-round_robin}
+      FACT_MODE: ${FACT_MODE:-bank_only}
+
+volumes:
+  pg_data:
+  minio_data:
