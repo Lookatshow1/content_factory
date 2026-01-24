@@ -30,7 +30,7 @@ def create_episode_job():
     try:
         now = datetime.now(ZoneInfo(settings.TZ))
         job = crud.create_episode_job(session, scheduled_for=now, topic_seed=now.isoformat())
-        enqueue_chain(job.id, "object")
+        enqueue_chain(job.id, "idea")
         logger.info("scheduled job %s", job.id)
     finally:
         session.close()

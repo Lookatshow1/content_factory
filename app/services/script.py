@@ -2,7 +2,7 @@ import re
 
 
 def count_words(text: str) -> int:
-    return len(re.findall(r"\b\w+\b", text or ""))
+    return len(re.findall(r"[A-Za-zА-Яа-яЁё]+", text or ""))
 
 
 def validate_voiceover(text: str) -> bool:

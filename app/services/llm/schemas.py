@@ -12,17 +12,35 @@ class ObjectSpec(BaseModel):
     constraints: List[str]
 
 
+class IdeaSpec(BaseModel):
+    rubric_id: str
+    rubric_name: str
+    domain: str
+    object_title: str
+    object_context: str
+    intended_takeaway: str
+    angle: str
+    constraints: List[str]
+
+
+class FactSource(BaseModel):
+    title: str
+    url: str
+    date: Optional[str] = None
+
+
 class FactItem(BaseModel):
     id: str
     claim: str
-    source_title: str
+    sources: List[FactSource] = []
+    source_title: str = ""
     source_author: str = ""
     source_year: Optional[int] = None
-    source_locator: str
-    source_url: str
-    evidence_snippet: str
-    reliability: str
-    notes: str
+    source_locator: str = ""
+    source_url: str = ""
+    evidence_snippet: str = ""
+    reliability: str = "B"
+    notes: str = ""
 
 
 class FactPack(BaseModel):

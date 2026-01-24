@@ -16,13 +16,15 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 
-def enqueue_chain(job_id: UUID, start_step: str = "object"):
+def enqueue_chain(job_id: UUID, start_step: str = "idea"):
     steps = {
-        "object": [object_step, factpack_step, script_step, storyboard_step, clip_stub_step],
-        "factpack": [factpack_step, script_step, storyboard_step, clip_stub_step],
+        "idea": [idea_step, research_step, script_step, storyboard_step, clip_stub_step],
+        "research": [research_step, script_step, storyboard_step, clip_stub_step],
         "script": [script_step, storyboard_step, clip_stub_step],
         "storyboard": [storyboard_step, clip_stub_step],
         "clip": [clip_stub_step],
+        "object": [idea_step, research_step, script_step, storyboard_step, clip_stub_step],
+        "factpack": [research_step, script_step, storyboard_step, clip_stub_step],
     }
     if start_step not in steps:
         raise ValueError("unknown step")
@@ -66,26 +68,26 @@ def _fail_step(session, run_id: UUID, error_text: str, payload: dict = None):
 
 
 @celery_app.task(bind=True, max_retries=2)
-def object_step(self, job_id: str):
+def idea_step(self, job_id: str):
     session = SessionLocal()
     run = None
     try:
         job_uuid = UUID(job_id)
-        run = _start_step(session, job_uuid, StepName.object)
+        run = _start_step(session, job_uuid, StepName.idea)
 
-        object_spec = agents.generate_object_spec(session, job_uuid)
-        crud.update_job_fields(session, job_uuid, object_title=object_spec.object_title)
+        idea_spec = agents.generate_idea_spec(session, job_uuid)
+        crud.update_job_fields(session, job_uuid, object_title=idea_spec.object_title)
 
         crud.create_artifact(
             session,
             job_uuid,
-            ArtifactKind.ObjectSpec,
+            ArtifactKind.IdeaSpec,
             uri=None,
             content_type="application/json",
             bytes_count=None,
-            meta_json=object_spec.model_dump(),
+            meta_json=idea_spec.model_dump(),
         )
-        _finish_step(session, run.id, payload={"object_title": object_spec.object_title})
+        _finish_step(session, run.id, payload={"object_title": idea_spec.object_title})
         return job_id
     except Exception as exc:
         if run:
@@ -99,18 +101,18 @@ def object_step(self, job_id: str):
 
 
 @celery_app.task(bind=True, max_retries=2)
-def factpack_step(self, job_id: str):
+def research_step(self, job_id: str):
     session = SessionLocal()
     run = None
     try:
         job_uuid = UUID(job_id)
-        run = _start_step(session, job_uuid, StepName.factpack)
-        object_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.ObjectSpec)
-        if not object_art or not object_art.meta_json:
-            raise ValueError("ObjectSpec not found")
-        object_spec = agents.ObjectSpec.model_validate(object_art.meta_json)
+        run = _start_step(session, job_uuid, StepName.research)
+        idea_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.IdeaSpec)
+        if not idea_art or not idea_art.meta_json:
+            raise ValueError("IdeaSpec not found")
+        idea_spec = agents.IdeaSpec.model_validate(idea_art.meta_json)
 
-        factpack = agents.generate_factpack(session, job_uuid, object_spec)
+        factpack = agents.build_factpack(session, idea_spec)
         crud.create_artifact(
             session,
             job_uuid,
@@ -141,21 +143,21 @@ def script_step(self, job_id: str):
         job_uuid = UUID(job_id)
         run = _start_step(session, job_uuid, StepName.script)
 
-        object_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.ObjectSpec)
+        idea_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.IdeaSpec)
         fact_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.FactPack)
-        if not object_art or not object_art.meta_json:
-            raise ValueError("ObjectSpec not found")
+        if not idea_art or not idea_art.meta_json:
+            raise ValueError("IdeaSpec not found")
         if not fact_art or not fact_art.meta_json:
             raise ValueError("FactPack not found")
 
-        object_spec = agents.ObjectSpec.model_validate(object_art.meta_json)
+        idea_spec = agents.IdeaSpec.model_validate(idea_art.meta_json)
         factpack = agents.FactPack.model_validate(fact_art.meta_json)
         series = agents.select_series(session)
 
         script, verdict_json, style_payload, repeat_detected = agents.generate_script_spec(
             session,
             job_uuid,
-            object_spec,
+            idea_spec,
             factpack,
             series,
         )
@@ -163,14 +165,14 @@ def script_step(self, job_id: str):
         hook_digest, voiceover_digest = agents.compute_digests(script)
         similarity_hook = crud.compute_similarity(session, hook_digest, "hook_digest", job_uuid)
         similarity_voice = crud.compute_similarity(session, voiceover_digest, "voiceover_digest", job_uuid)
-        similarity_object = crud.compute_similarity(session, object_spec.object_title, "object_title", job_uuid)
+        similarity_object = crud.compute_similarity(session, idea_spec.object_title, "object_title", job_uuid)
         threshold = settings.REPEAT_SIMILARITY_THRESHOLD
         repeat_detected = max(similarity_hook, similarity_voice, similarity_object) >= threshold
 
         crud.update_job_fields(
             session,
             job_uuid,
-            object_title=object_spec.object_title,
+            object_title=idea_spec.object_title,
             hook_digest=hook_digest,
             voiceover_digest=voiceover_digest,
             judge_json=verdict_json,
@@ -211,16 +213,16 @@ def storyboard_step(self, job_id: str):
     try:
         job_uuid = UUID(job_id)
         run = _start_step(session, job_uuid, StepName.storyboard)
-        object_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.ObjectSpec)
+        idea_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.IdeaSpec)
         script_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.ScriptSpec)
-        if not object_art or not object_art.meta_json:
-            raise ValueError("ObjectSpec not found")
+        if not idea_art or not idea_art.meta_json:
+            raise ValueError("IdeaSpec not found")
         if not script_art or not script_art.meta_json:
             raise ValueError("ScriptSpec not found")
 
-        object_spec = agents.ObjectSpec.model_validate(object_art.meta_json)
+        idea_spec = agents.IdeaSpec.model_validate(idea_art.meta_json)
         script = agents.ScriptSpec.model_validate(script_art.meta_json)
-        storyboard = agents.generate_storyboard(session, job_uuid, object_spec, script)
+        storyboard = agents.generate_storyboard(session, job_uuid, idea_spec, script)
 
         crud.create_artifact(
             session,

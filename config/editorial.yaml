@@ -1,0 +1,89 @@
+rubrics:
+  - id: ad_scene_case
+    name: "Кейс рекламы в одной сцене"
+    domain: marketing
+    goal: "Показать, как одна сцена фиксирует стратегию бренда."
+    structure: ["hook", "scene", "tension", "detail", "takeaway"]
+    banned_moves: ["обобщенные лозунги", "антитезные конструкции"]
+    source_requirements: "Нужны минимум 2 источника о кампании или бренде."
+    claims_without_source: ["даты запусков", "цитаты", "цифры эффективности"]
+  - id: philosophy_object
+    name: "Философская идея через предмет"
+    domain: philosophy
+    goal: "Показать идею через физический объект и его функцию."
+    structure: ["hook", "object", "idea", "detail", "takeaway"]
+    banned_moves: ["абстрактные рассуждения без детали", "антитезы"]
+    source_requirements: "Нужен источник первичного текста или комментария."
+    claims_without_source: ["точные формулировки автора", "названия глав"]
+  - id: painting_blueprint
+    name: "Картина как инженерный чертёж смысла"
+    domain: culture
+    goal: "Разобрать композицию как механизм смысла."
+    structure: ["hook", "context", "composition", "detail", "takeaway"]
+    banned_moves: ["перечисления списком", "псевдо-уточнения"]
+    source_requirements: "Нужен каталог музея или исследование."
+    claims_without_source: ["точные даты", "цитаты критиков"]
+  - id: history_strategy
+    name: "Исторический эпизод как урок стратегии"
+    domain: history
+    goal: "Вытащить стратегический вывод из одного эпизода."
+    structure: ["hook", "episode", "move", "detail", "takeaway"]
+    banned_moves: ["анонимные источники", "непроверенные имена"]
+    source_requirements: "Нужны минимум 2 источника."
+    claims_without_source: ["даты", "имена", "места"]
+  - id: marketing_trick_price
+    name: "Маркетинговый трюк и его цена"
+    domain: marketing
+    goal: "Показать эффект и скрытую стоимость приема."
+    structure: ["hook", "trick", "effect", "price", "takeaway"]
+    banned_moves: ["морализаторство", "обобщения"]
+    source_requirements: "Нужны источники о кейсе/бренде."
+    claims_without_source: ["цифры", "даты"]
+  - id: brand_symbol
+    name: "Символ бренда как рычаг внимания"
+    domain: marketing
+    goal: "Показать, как символ решает задачу узнавания."
+    structure: ["hook", "symbol", "mechanism", "detail", "takeaway"]
+    banned_moves: ["лишний пафос", "штампы"]
+    source_requirements: "Нужен источник о разработке символа."
+    claims_without_source: ["имена дизайнеров", "годы"]
+  - id: museum_detail
+    name: "Деталь в музее как ключ"
+    domain: culture
+    goal: "Сделать деталь главным сюжетом."
+    structure: ["hook", "context", "detail", "interpretation", "takeaway"]
+    banned_moves: ["абстракции как агенты", "антитезы"]
+    source_requirements: "Нужны музейные данные."
+    claims_without_source: ["точные даты", "цитаты"]
+  - id: manifesto_object
+    name: "Манифест в одном объекте"
+    domain: philosophy
+    goal: "Привязать идею к материальной форме."
+    structure: ["hook", "object", "idea", "detail", "takeaway"]
+    banned_moves: ["многословие", "пустые формулы"]
+    source_requirements: "Нужен источник текста или его пересказ."
+    claims_without_source: ["прямая цитата", "название главы"]
+  - id: power_speech
+    name: "Речь и власть"
+    domain: history
+    goal: "Показать, как формулировка меняет поведение."
+    structure: ["hook", "context", "phrase", "impact", "takeaway"]
+    banned_moves: ["непроверенные цитаты", "мифы"]
+    source_requirements: "Нужны источники речи."
+    claims_without_source: ["даты", "места"]
+  - id: purchase_ritual
+    name: "Ритуал покупки"
+    domain: marketing
+    goal: "Разобрать последовательность действий и смысл."
+    structure: ["hook", "ritual", "detail", "emotion", "takeaway"]
+    banned_moves: ["обобщающие формулы"]
+    source_requirements: "Нужны источники о ритуале/привычке."
+    claims_without_source: ["конкретные цифры"]
+  - id: media_myth
+    name: "Медиамиф и его функция"
+    domain: culture
+    goal: "Показать, зачем миф поддерживают."
+    structure: ["hook", "myth", "carrier", "detail", "takeaway"]
+    banned_moves: ["псевдо-объяснения", "антитезы"]
+    source_requirements: "Нужны источники и контекст."
+    claims_without_source: ["имена и даты"]

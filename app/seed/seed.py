@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from app.db import SessionLocal
-from app.models import ContentSeries, FactBank
+from app.models import ContentSeries, FactBank, FactCard
 
 SERIES = [
     {
@@ -28,6 +28,7 @@ SERIES = [
 ]
 
 TOPIC_FILE = Path(__file__).resolve().parent / "topic_bank.json"
+FACT_CARDS_FILE = Path(__file__).resolve().parents[2] / "seed" / "fact_cards.jsonl"
 
 
 def seed_series(session):
@@ -58,6 +59,32 @@ def seed_fact_bank(session):
     session.commit()
 
 
+def seed_fact_cards(session):
+    if session.query(FactCard).count() > 0:
+        return
+    if not FACT_CARDS_FILE.exists():
+        return
+    items = []
+    with FACT_CARDS_FILE.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            items.append(
+                FactCard(
+                    domain=data.get("domain"),
+                    title=data.get("title"),
+                    claim_lines=data.get("claim_lines", []),
+                    sources=data.get("sources", []),
+                    tags=data.get("tags", []),
+                    language=data.get("language", "ru"),
+                )
+            )
+    session.add_all(items)
+    session.commit()
+
+
 def ensure_topic_bank():
     if TOPIC_FILE.exists():
         return
@@ -71,6 +98,7 @@ def main():
     try:
         seed_series(session)
         seed_fact_bank(session)
+        seed_fact_cards(session)
     finally:
         session.close()
 
