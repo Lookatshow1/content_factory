@@ -100,7 +100,7 @@ def overlay_captions(input_path: str, hook: str, ass_path: str, output_path: str
         "-preset",
         "veryslow",
         "-crf",
-        "0",
+        "1",
         "-profile:v",
         "high",
         "-level",

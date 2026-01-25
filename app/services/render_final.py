@@ -74,7 +74,7 @@ def render_ffmpeg_kinetic(
         "-preset",
         "veryslow",
         "-crf",
-        "0",
+        "1",
         "-profile:v",
         "high",
         "-level",
