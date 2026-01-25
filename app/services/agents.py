@@ -164,6 +164,7 @@ def _script_prompt(idea_spec: IdeaSpec, factpack: FactPack, series, no_facts: bo
     payload = {
         "idea": idea_spec.model_dump(),
         "facts": [fact.model_dump() for fact in factpack.facts] if not no_facts else [],
+        "allowed_sources": _fact_sources(factpack) if not no_facts else [],
         "series_preamble": _series_prompt(series),
         "fact_mode": "no_facts" if no_facts else "factpack",
         "rules": {
@@ -330,7 +331,8 @@ def generate_script_spec(
             "Ты Writer. Напиши ScriptSpec для вертикального видео. "
             "Никаких нейрошаблонов, никаких антитез, живой русский. "
             "Конкретная деталь объекта обязательна. "
-            "Заполни claims_used тезисами из FactPack."
+            "Заполни claims_used тезисами из FactPack. "
+            "on_screen_sources должен быть 1-2 строки и содержать только значения из allowed_sources."
         )
         writer_user = _script_prompt(idea_spec, factpack, series, no_facts=no_facts)
         if not no_facts:
@@ -354,11 +356,13 @@ def generate_script_spec(
     def _editor_pass(script: ScriptSpec, must_fix: Optional[List[str]] = None) -> ScriptSpec:
         editor_system = (
             "Ты Editor. Отредактируй ScriptSpec: лучше ритм, чище стиль, без штампов. "
-            "Не добавляй новых фактов. Не используй антитезы."
+            "Не добавляй новых фактов. Не используй антитезы. "
+            "Сохраняй on_screen_sources только из allowed_sources."
         )
         editor_user = {
             "script": script.model_dump(),
             "rules": _script_prompt(idea_spec, factpack, series, no_facts=no_facts)["rules"],
+            "allowed_sources": _fact_sources(factpack) if not no_facts else [],
             "must_fix": must_fix or [],
         }
         edited_data = client.generate_json(
