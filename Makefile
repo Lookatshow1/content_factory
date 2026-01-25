@@ -1,5 +1,6 @@
 ENV_FILE ?= .env
 COMPOSE = docker compose --env-file $(ENV_FILE)
+.PHONY: up down logs migrate seed smoke test test_e2e
 
 up:
 	$(COMPOSE) up -d --build
