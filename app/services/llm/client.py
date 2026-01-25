@@ -304,7 +304,7 @@ class LLMClient:
                 {
                     "role": "user",
                     "content": json.dumps(
-                        {"error": str(err), "original": data, "raw_text": response.get(\"text\")},
+                        {"error": str(err), "original": data, "raw_text": response.get("text")},
                         ensure_ascii=False,
                     ),
                 },
