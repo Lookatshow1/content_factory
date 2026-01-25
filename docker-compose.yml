@@ -50,7 +50,9 @@ services:
       retries: 10
 
   api:
-    build: ./api
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
@@ -120,7 +122,9 @@ services:
       - "${API_PORT:-8000}:8000"
 
   worker:
-    build: ./worker
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
@@ -188,7 +192,9 @@ services:
       TIKTOK_APP_SECRET: ${TIKTOK_APP_SECRET:-}
 
   scheduler:
-    build: ./scheduler
+    build:
+      context: .
+      dockerfile: scheduler/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
