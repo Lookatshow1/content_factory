@@ -22,6 +22,10 @@ def select_rubric(job_index: int) -> Optional[dict]:
     rubrics = list_rubrics()
     if not rubrics:
         return None
+    if settings.FORCE_RUBRIC_ID:
+        for rubric in rubrics:
+            if rubric.get("id") == settings.FORCE_RUBRIC_ID:
+                return rubric
     if settings.SERIES_MODE == "random":
         import random
 

@@ -238,6 +238,8 @@ def script_step(self, job_id: str):
         if repeat_detected:
             raise ValueError("repeat_detected")
         if style_failed:
+            if style_payload and style_payload.get("validation_issues"):
+                raise ValueError("VALIDATION")
             raise ValueError("STYLE_GUARD")
 
         crud.create_artifact(
@@ -257,6 +259,8 @@ def script_step(self, job_id: str):
         error_code = None
         if str(exc) == "STYLE_GUARD":
             error_code = "STYLE_GUARD"
+        if str(exc) == "VALIDATION":
+            error_code = "VALIDATION"
         if str(exc) == "repeat_detected":
             error_code = "REPEAT_DETECTED"
         if run:
@@ -328,6 +332,8 @@ def tts_step(self, job_id: str):
         result = tts.synthesize(script.voiceover_text)
         audio_path = result["path"]
         duration = probe_duration(audio_path)
+        if duration < 0.5:
+            raise ValueError("TTS_EMPTY")
 
         storage = StorageClient()
         key = f"episodes/{job_id}/voiceover.wav"
@@ -351,8 +357,11 @@ def tts_step(self, job_id: str):
         log_event(logger, "step_done", episode_job_id=job_id, step="tts")
         return job_id
     except Exception as exc:
+        error_code = None
+        if str(exc) == "TTS_EMPTY":
+            error_code = "TTS_EMPTY"
         if run:
-            _fail_step(session, run.id, str(exc))
+            _fail_step(session, run.id, str(exc), error_code=error_code)
         if self.request.retries >= self.max_retries:
             crud.set_job_status(session, UUID(job_id), EpisodeStatus.quarantined)
             raise

@@ -250,44 +250,48 @@ def generate_script_spec(
     no_facts = not factpack.facts
     fact_ids = _fact_ids(factpack)
 
-    def _validate(script: ScriptSpec) -> Tuple[List[str], List[str]]:
+    def _validate(script: ScriptSpec) -> Tuple[List[str], List[str], List[str]]:
         issues = []
+        validation_issues = []
         if not validate_voiceover(script.voiceover_text):
-            issues.append("voiceover_text должен быть 70-110 слов")
+            validation_issues.append("voiceover_text должен быть 70-110 слов")
         if not (6 <= len(script.on_screen_captions) <= 8):
-            issues.append("on_screen_captions должен быть 6-8 строк")
+            validation_issues.append("on_screen_captions должен быть 6-8 строк")
         ok_len, caption_issues = validate_captions_length(script.on_screen_captions)
         if not ok_len:
-            issues.extend(caption_issues)
+            validation_issues.extend(caption_issues)
         if not script.on_screen_captions or "источник" not in script.on_screen_captions[-1].lower():
-            issues.append("последний caption должен содержать слово 'источник'")
+            validation_issues.append("последний caption должен содержать слово 'источник'")
+        issues.extend(validation_issues)
         if no_facts:
             if script.fact_ids_used:
-                issues.append("fact_ids_used должен быть пустым без FactPack")
+                validation_issues.append("fact_ids_used должен быть пустым без FactPack")
             if script.claims_used:
-                issues.append("claims_used должен быть пустым без FactPack")
+                validation_issues.append("claims_used должен быть пустым без FactPack")
             if script.on_screen_sources:
-                issues.append("on_screen_sources должен быть пустым без FactPack")
+                validation_issues.append("on_screen_sources должен быть пустым без FactPack")
             if _has_disallowed_specifics(script.voiceover_text + " " + script.hook):
-                issues.append("конкретика запрещена без FactPack")
+                validation_issues.append("конкретика запрещена без FactPack")
+            issues.extend(validation_issues)
         else:
             if not set(script.fact_ids_used).issubset(set(fact_ids)):
-                issues.append("fact_ids_used содержит неизвестные id")
+                validation_issues.append("fact_ids_used содержит неизвестные id")
             if not script.fact_ids_used:
-                issues.append("fact_ids_used должен быть заполнен")
+                validation_issues.append("fact_ids_used должен быть заполнен")
             fact_claims = _fact_claims(factpack)
             if not script.claims_used:
-                issues.append("claims_used должен быть заполнен")
+                validation_issues.append("claims_used должен быть заполнен")
             if not set(script.claims_used).issubset(set(fact_claims)):
-                issues.append("claims_used содержит неизвестные claims")
+                validation_issues.append("claims_used содержит неизвестные claims")
             if not script.on_screen_sources:
-                issues.append("on_screen_sources должны быть заполнены")
+                validation_issues.append("on_screen_sources должны быть заполнены")
             elif len(script.on_screen_sources) > 2:
-                issues.append("on_screen_sources должен быть 1-2 строки")
+                validation_issues.append("on_screen_sources должен быть 1-2 строки")
             else:
                 allowed_sources = _fact_sources(factpack)
                 if not any(source in " ".join(allowed_sources) for source in script.on_screen_sources):
-                    issues.append("on_screen_sources не соответствуют FactPack")
+                    validation_issues.append("on_screen_sources не соответствуют FactPack")
+            issues.extend(validation_issues)
         style_issues = lint_script(
             script.hook,
             script.voiceover_text,
@@ -295,7 +299,7 @@ def generate_script_spec(
             script.cta,
         )
         issues.extend(style_issues)
-        return issues, style_issues
+        return issues, style_issues, validation_issues
 
     def _judge(script: ScriptSpec, issues: List[str]) -> JudgeVerdict:
         judge_system = "Ты Judge. Оцени текст по критериям, верни verdict JSON."
@@ -367,21 +371,36 @@ def generate_script_spec(
 
     # First pass
     script = _editor_pass(_writer_pass())
-    issues, style_issues = _validate(script)
+    issues, style_issues, validation_issues = _validate(script)
     verdict = _judge(script, issues)
     must_fix = list(dict.fromkeys(issues + verdict.must_fix))
     if verdict.pass_ and not must_fix:
-        return script, verdict.model_dump(by_alias=True), {"issues": style_issues}, False
+        return (
+            script,
+            verdict.model_dump(by_alias=True),
+            {"issues": style_issues, "validation_issues": validation_issues},
+            False,
+        )
 
     # Second pass with must_fix
     script = _editor_pass(_writer_pass(must_fix), must_fix=must_fix)
-    issues, style_issues = _validate(script)
+    issues, style_issues, validation_issues = _validate(script)
     verdict = _judge(script, issues)
     must_fix = list(dict.fromkeys(issues + verdict.must_fix))
     if verdict.pass_ and not must_fix:
-        return script, verdict.model_dump(by_alias=True), {"issues": style_issues}, False
+        return (
+            script,
+            verdict.model_dump(by_alias=True),
+            {"issues": style_issues, "validation_issues": validation_issues},
+            False,
+        )
 
-    return script, verdict.model_dump(by_alias=True), {"issues": must_fix}, True
+    return (
+        script,
+        verdict.model_dump(by_alias=True),
+        {"issues": must_fix, "validation_issues": validation_issues},
+        True,
+    )
 
 
 def generate_storyboard(session, job_id, idea_spec: IdeaSpec, script: ScriptSpec) -> Storyboard:

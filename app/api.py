@@ -173,6 +173,16 @@ def admin_health(session=Depends(get_session)):
     }
 
 
+@router.get("/admin/jobs/{job_id}/artifacts/clip_final")
+def admin_clip_final(job_id: UUID, session=Depends(get_session)):
+    artifact = crud.get_latest_artifact(session, job_id, kind=ArtifactKind.ClipFinal)
+    if not artifact or not artifact.uri:
+        raise HTTPException(status_code=404, detail="ClipFinal not found")
+    storage = StorageClient()
+    url = storage.presign_url(artifact.uri, expires_in=900)
+    return {"url": url, "artifact_id": str(artifact.id)}
+
+
 @router.get("/admin/metrics")
 def admin_metrics(session=Depends(get_session)):
     job_counts = session.execute(
