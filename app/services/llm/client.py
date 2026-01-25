@@ -298,7 +298,10 @@ class LLMClient:
         if json_schema:
             payload["generationConfig"]["responseMimeType"] = "application/json"
 
-        url = f"{provider.base_url.rstrip('/')}/models/{model}:generateContent"
+        model_name = model
+        if model_name.startswith("models/"):
+            model_name = model_name.split("/", 1)[1]
+        url = f"{provider.base_url.rstrip('/')}/models/{model_name}:generateContent"
         backoff = 1
         for attempt in range(3):
             try:
