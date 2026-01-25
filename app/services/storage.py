@@ -54,3 +54,11 @@ class StorageClient:
             Params={"Bucket": bucket, "Key": key},
             ExpiresIn=expires_in,
         )
+
+    def get_object_stream(self, uri: str):
+        parsed = urlparse(uri)
+        if parsed.scheme != "s3":
+            raise ValueError("unsupported uri")
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        return self.client.get_object(Bucket=bucket, Key=key)

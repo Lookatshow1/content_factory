@@ -1,15 +1,17 @@
 from uuid import UUID
+from typing import Optional
 
 import shutil
 from datetime import datetime
 
 import redis
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
 from app import crud
 from app.db import get_session
-from app.models import EpisodeJob, StepRun
+from app.models import EpisodeJob, StepRun, ArtifactKind
 from app.schemas import (
     EpisodeJobDetail,
     FactBankList,
@@ -79,6 +81,46 @@ def download_artifact(artifact_id: UUID, session=Depends(get_session)):
     storage = StorageClient()
     url = storage.presign_url(artifact.uri, expires_in=900)
     return {"url": url}
+
+
+@router.get("/download")
+def download_latest(job_id: Optional[UUID] = None, artifact_id: Optional[UUID] = None, session=Depends(get_session)):
+    if artifact_id:
+        artifact = crud.get_artifact(session, artifact_id)
+        if not artifact:
+            raise HTTPException(status_code=404, detail="artifact not found")
+    else:
+        if job_id:
+            artifact = crud.get_latest_artifact(session, job_id, kind=ArtifactKind.ClipFinal)
+        else:
+            jobs = crud.list_jobs(session, limit=1)
+            if not jobs:
+                raise HTTPException(status_code=404, detail="no jobs")
+            artifact = crud.get_latest_artifact(session, jobs[0].id, kind=ArtifactKind.ClipFinal)
+        if not artifact:
+            raise HTTPException(status_code=404, detail="ClipFinal not found")
+    if not artifact.uri:
+        raise HTTPException(status_code=400, detail="artifact has no uri")
+
+    storage = StorageClient()
+    obj = storage.get_object_stream(artifact.uri)
+    body = obj["Body"]
+    content_type = obj.get("ContentType") or artifact.content_type or "application/octet-stream"
+    content_length = obj.get("ContentLength")
+    filename = f"clip_{artifact.episode_job_id}.mp4"
+
+    def _iter():
+        try:
+            for chunk in body.iter_chunks(chunk_size=1024 * 1024):
+                if chunk:
+                    yield chunk
+        finally:
+            body.close()
+
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    if content_length:
+        headers["Content-Length"] = str(content_length)
+    return StreamingResponse(_iter(), media_type=content_type, headers=headers)
 
 
 @router.get("/series", response_model=SeriesList)
