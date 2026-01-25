@@ -3,6 +3,7 @@ version: "3.9"
 services:
   postgres:
     image: postgres:15
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -20,6 +21,7 @@ services:
 
   redis:
     image: redis:7
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -30,6 +32,7 @@ services:
 
   minio:
     image: minio/minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -48,6 +51,7 @@ services:
 
   api:
     build: ./api
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +121,7 @@ services:
 
   worker:
     build: ./worker
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -184,6 +189,7 @@ services:
 
   scheduler:
     build: ./scheduler
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
