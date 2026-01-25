@@ -186,9 +186,20 @@ class LLMClient:
                 max_tokens=max_tokens,
                 timeout=timeout,
             )
+        send_messages = list(messages)
+        if json_schema and provider.name in ("openrouter", "google"):
+            schema_hint = json.dumps(json_schema, ensure_ascii=False)
+            send_messages = [
+                {
+                    "role": "system",
+                    "content": f"Верни только JSON строго по схеме: {schema_hint}",
+                },
+                *send_messages,
+            ]
+
         payload: Dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": send_messages,
             "temperature": temperature if temperature is not None else settings.LLM_TEMPERATURE,
             "max_tokens": max_tokens or settings.LLM_MAX_TOKENS,
         }

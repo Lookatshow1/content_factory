@@ -36,6 +36,7 @@ def main() -> int:
                 "source_url": "https://example.com/source-2",
             },
         ],
+        "fact_ids_required": ["fact-1", "fact-2"],
         "rules": {
             "language": "ru",
             "voiceover_words": "70-110",
