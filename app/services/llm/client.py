@@ -244,15 +244,15 @@ class LLMClient:
         max_tokens: Optional[int],
         timeout: Optional[int],
     ) -> Dict[str, Any]:
-        url = f\"{provider.base_url.rstrip('/')}/completion\"
+        url = f"{provider.base_url.rstrip('/')}/completion"
         payload: Dict[str, Any] = {
-            \"modelUri\": model,
-            \"completionOptions\": {
-                \"temperature\": temperature if temperature is not None else settings.LLM_TEMPERATURE,
-                \"maxTokens\": int(max_tokens or settings.LLM_MAX_TOKENS),
+            "modelUri": model,
+            "completionOptions": {
+                "temperature": temperature if temperature is not None else settings.LLM_TEMPERATURE,
+                "maxTokens": int(max_tokens or settings.LLM_MAX_TOKENS),
             },
-            \"messages\": [
-                {\"role\": m.get(\"role\"), \"text\": m.get(\"content\") or \"\"} for m in messages
+            "messages": [
+                {"role": m.get("role"), "text": m.get("content") or ""} for m in messages
             ],
         }
         backoff = 1
@@ -262,13 +262,13 @@ class LLMClient:
                     resp = client.post(url, headers=provider.headers, json=payload)
                 if resp.status_code in (429, 500, 502, 503, 504):
                     raise httpx.HTTPStatusError(
-                        f\"LLM error {resp.status_code}\", request=resp.request, response=resp
+                        f"LLM error {resp.status_code}", request=resp.request, response=resp
                     )
                 resp.raise_for_status()
                 data = resp.json()
-                alt = data.get(\"result\", {}).get(\"alternatives\", [{}])[0]
-                msg = alt.get(\"message\", {}) if isinstance(alt, dict) else {}
-                text = msg.get(\"text\") or \"\"
+                alt = data.get("result", {}).get("alternatives", [{}])[0]
+                msg = alt.get("message", {}) if isinstance(alt, dict) else {}
+                text = msg.get("text") or ""
                 parsed_json = None
                 if json_schema:
                     try:
@@ -276,12 +276,12 @@ class LLMClient:
                     except json.JSONDecodeError:
                         parsed_json = None
                 return {
-                    \"text\": text,
-                    \"json\": parsed_json,
-                    \"usage\": data.get(\"usage\") or data.get(\"result\", {}).get(\"usage\"),
-                    \"raw\": data,
-                    \"provider\": provider.name,
-                    \"model\": model,
+                    "text": text,
+                    "json": parsed_json,
+                    "usage": data.get("usage") or data.get("result", {}).get("usage"),
+                    "raw": data,
+                    "provider": provider.name,
+                    "model": model,
                 }
             except httpx.HTTPStatusError:
                 if attempt == 2:
@@ -293,7 +293,7 @@ class LLMClient:
                     raise
                 time.sleep(backoff)
                 backoff *= 2
-        raise RuntimeError(\"Yandex LLM request failed\")
+        raise RuntimeError("Yandex LLM request failed")
 
     def _extract_json(self, content: Optional[str]) -> Optional[dict]:
         if not content:
