@@ -15,7 +15,7 @@ from app.services.llm.schemas import (
     ScriptSpec,
     Storyboard,
 )
-from app.services.script import normalize_text, validate_voiceover
+from app.services.script import normalize_text, trim_voiceover, validate_voiceover
 from app.services.storyboard import default_storyboard
 from app.services.style_guard import lint_script, validate_captions_length
 from app.settings import settings
@@ -332,6 +332,7 @@ def generate_script_spec(
             "Никаких нейрошаблонов, никаких антитез, живой русский. "
             "Конкретная деталь объекта обязательна. "
             "Заполни claims_used тезисами из FactPack. "
+            "Длина voiceover_text строго 70-110 слов, если больше - сокращай. "
             "on_screen_sources должен быть 1-2 строки и содержать только значения из allowed_sources."
         )
         writer_user = _script_prompt(idea_spec, factpack, series, no_facts=no_facts)
@@ -357,6 +358,7 @@ def generate_script_spec(
         editor_system = (
             "Ты Editor. Отредактируй ScriptSpec: лучше ритм, чище стиль, без штампов. "
             "Не добавляй новых фактов. Не используй антитезы. "
+            "Длина voiceover_text строго 70-110 слов, если больше - сокращай. "
             "Сохраняй on_screen_sources только из allowed_sources."
         )
         editor_user = {
@@ -402,6 +404,21 @@ def generate_script_spec(
             {"issues": style_issues, "validation_issues": validation_issues},
             False,
         )
+
+    if validation_issues == ["voiceover_text должен быть 70-110 слов"]:
+        trimmed = trim_voiceover(script.voiceover_text)
+        if trimmed != script.voiceover_text:
+            script.voiceover_text = trimmed
+            issues, style_issues, validation_issues = _validate(script)
+            verdict = _judge(script, issues)
+            must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+            if verdict.pass_ and not must_fix:
+                return (
+                    script,
+                    verdict.model_dump(by_alias=True),
+                    {"issues": style_issues, "validation_issues": validation_issues},
+                    False,
+                )
 
     return (
         script,
