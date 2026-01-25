@@ -386,7 +386,8 @@ def generate_script_spec(
     script = _editor_pass(_writer_pass())
     issues, style_issues, validation_issues = _validate(script)
     verdict = _judge(script, issues)
-    must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+    judge_fix = verdict.must_fix if not verdict.pass_ else []
+    must_fix = list(dict.fromkeys(issues + judge_fix))
     if verdict.pass_ and not must_fix:
         return (
             script,
@@ -399,7 +400,8 @@ def generate_script_spec(
     script = _editor_pass(_writer_pass(must_fix), must_fix=must_fix)
     issues, style_issues, validation_issues = _validate(script)
     verdict = _judge(script, issues)
-    must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+    judge_fix = verdict.must_fix if not verdict.pass_ else []
+    must_fix = list(dict.fromkeys(issues + judge_fix))
     if verdict.pass_ and not must_fix:
         return (
             script,
@@ -414,7 +416,8 @@ def generate_script_spec(
             script.voiceover_text = trimmed
             issues, style_issues, validation_issues = _validate(script)
             verdict = _judge(script, issues)
-            must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+            judge_fix = verdict.must_fix if not verdict.pass_ else []
+            must_fix = list(dict.fromkeys(issues + judge_fix))
             if verdict.pass_ and not must_fix:
                 return (
                     script,
@@ -436,7 +439,8 @@ def generate_script_spec(
             ]
         issues, style_issues, validation_issues = _validate(script)
         verdict = _judge(script, issues)
-        must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+        judge_fix = verdict.must_fix if not verdict.pass_ else []
+        must_fix = list(dict.fromkeys(issues + judge_fix))
         if verdict.pass_ and not must_fix:
             return (
                 script,
