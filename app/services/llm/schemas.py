@@ -55,6 +55,7 @@ class ScriptSpec(BaseModel):
     object_title: str
     fact_ids_used: List[str]
     on_screen_sources: List[str]
+    claims_used: List[str] = []
 
 
 class StoryboardScene(BaseModel):

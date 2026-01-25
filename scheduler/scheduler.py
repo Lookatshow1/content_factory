@@ -9,8 +9,9 @@ from app import crud
 from app.db import SessionLocal
 from app.tasks.pipeline import enqueue_chain
 from app.settings import settings
+from app.services.logging import setup_logging
 
-logging.basicConfig(level=logging.INFO)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -29,8 +30,15 @@ def create_episode_job():
     session = SessionLocal()
     try:
         now = datetime.now(ZoneInfo(settings.TZ))
-        job = crud.create_episode_job(session, scheduled_for=now, topic_seed=now.isoformat())
-        enqueue_chain(job.id, "idea")
+        allowed = [item.strip() for item in settings.PIPELINE_ALLOWED.split(",") if item.strip()]
+        version = settings.PIPELINE_VERSION if settings.PIPELINE_VERSION in allowed else "v3"
+        job = crud.create_episode_job(
+            session,
+            scheduled_for=now,
+            topic_seed=now.isoformat(),
+            pipeline_version=version,
+        )
+        enqueue_chain(job.id, "idea", pipeline_version=version)
         logger.info("scheduled job %s", job.id)
     finally:
         session.close()

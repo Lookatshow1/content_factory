@@ -73,6 +73,7 @@ def seed_fact_cards(session):
             data = json.loads(line)
             items.append(
                 FactCard(
+                    external_id=data.get("id"),
                     domain=data.get("domain"),
                     title=data.get("title"),
                     claim_lines=data.get("claim_lines", []),

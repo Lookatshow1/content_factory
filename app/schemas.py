@@ -85,3 +85,20 @@ class SeriesList(BaseModel):
 
 class FactBankList(BaseModel):
     items: List[FactBankOut]
+
+
+class PublishJobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    episode_job_id: UUID
+    platform: str
+    status: str
+    scheduled_for: Optional[datetime]
+    payload_json: Optional[dict]
+    error_text: Optional[str]
+    created_at: datetime
+
+
+class PublishJobsList(BaseModel):
+    items: List[PublishJobOut]

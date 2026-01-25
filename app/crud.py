@@ -234,6 +234,14 @@ def create_publish_job(
     scheduled_for=None,
     payload_json: Optional[dict] = None,
 ):
+    existing = session.execute(
+        select(PublishJob).where(
+            PublishJob.episode_job_id == job_id,
+            PublishJob.platform == platform,
+        )
+    ).scalars().first()
+    if existing:
+        return existing
     publish_job = PublishJob(
         episode_job_id=job_id,
         platform=platform,

@@ -49,7 +49,7 @@ class LLMClient:
         self.fallback_state = CircuitState()
 
     def is_enabled(self) -> bool:
-        return bool(self.primary and self.primary.api_key)
+        return bool(self.primary or self.fallback)
 
     def generate(
         self,
@@ -61,13 +61,12 @@ class LLMClient:
         seed: Optional[int] = None,
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
-        if not self.primary:
-            raise ValueError("primary LLM provider not configured")
-
         providers = [
             (self.primary, self.primary_state),
             (self.fallback, self.fallback_state),
         ]
+        if not any(provider for provider, _ in providers):
+            raise ValueError("no LLM provider configured")
 
         last_error = None
         for provider, state in providers:
@@ -90,7 +89,7 @@ class LLMClient:
                     timeout=timeout,
                 )
                 state.reset()
-                self._log_usage(response, provider)
+                self._log_usage(response, provider, messages)
                 return response
             except Exception as exc:
                 last_error = exc
@@ -223,7 +222,7 @@ class LLMClient:
             return
         validator.model_validate(json_data)
 
-    def _log_usage(self, response: Dict[str, Any], provider: ProviderConfig) -> None:
+    def _log_usage(self, response: Dict[str, Any], provider: ProviderConfig, messages: List[dict]) -> None:
         usage = response.get("usage") or {}
         prompt_tokens = usage.get("prompt_tokens")
         completion_tokens = usage.get("completion_tokens")
@@ -231,7 +230,7 @@ class LLMClient:
         estimated = False
         if total_tokens is None:
             estimated = True
-            total_tokens = self._estimate_tokens(response.get("text") or "", response.get("raw"))
+            total_tokens = self._estimate_tokens(messages, response.get("text") or "")
         session = SessionLocal()
         try:
             crud.create_budget_entry(
@@ -250,12 +249,11 @@ class LLMClient:
         finally:
             session.close()
 
-    def _estimate_tokens(self, text: str, raw: Optional[dict]) -> int:
-        base = len(text) // 4
-        prompt = 0
-        if raw and raw.get("choices"):
-            prompt = 0
-        return max(1, base + prompt)
+    def _estimate_tokens(self, messages: List[dict], text: str) -> int:
+        prompt_text = " ".join([m.get("content", "") for m in messages or []])
+        prompt_tokens = max(1, len(prompt_text) // 4)
+        completion_tokens = max(1, len(text) // 4)
+        return prompt_tokens + completion_tokens
 
     def generate_json(
         self,

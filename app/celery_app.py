@@ -1,6 +1,9 @@
 from celery import Celery
 
 from app.settings import settings
+from app.services.logging import setup_logging
+
+setup_logging()
 
 celery_app = Celery(
     "svf",

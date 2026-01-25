@@ -3,7 +3,6 @@ import random
 from typing import List, Optional, Tuple
 
 from app import crud
-from app.models import FactCard
 from app.services import idea as idea_service
 from app.services.editorial import select_rubric
 from app.services.llm import LLMClient
@@ -144,6 +143,10 @@ def _fact_sources(factpack: FactPack) -> List[str]:
     return sources
 
 
+def _fact_claims(factpack: FactPack) -> List[str]:
+    return [fact.claim for fact in factpack.facts]
+
+
 def _script_prompt(idea_spec: IdeaSpec, factpack: FactPack, series) -> dict:
     return {
         "idea": idea_spec.model_dump(),
@@ -160,6 +163,7 @@ def _script_prompt(idea_spec: IdeaSpec, factpack: FactPack, series) -> dict:
             "no_semicolons": True,
             "no_long_dash": True,
             "no_fake_facts": True,
+            "claims_used_required": True,
         },
     }
 
@@ -212,6 +216,7 @@ def generate_script_spec(
             object_title=idea_spec.object_title,
             fact_ids_used=[],
             on_screen_sources=[],
+            claims_used=[],
         )
         style_payload = {
             "issues": lint_script(script.hook, script.voiceover_text, script.on_screen_captions, script.cta)
@@ -234,7 +239,8 @@ def generate_script_spec(
         writer_system = (
             "Ты Writer. Напиши ScriptSpec для вертикального видео. "
             "Никаких нейрошаблонов, никаких антитез, живой русский. "
-            "Конкретная деталь объекта обязательна."
+            "Конкретная деталь объекта обязательна. "
+            "Заполни claims_used тезисами из FactPack."
         )
         writer_user = _script_prompt(idea_spec, factpack, series)
         writer_user["fact_ids_required"] = fact_ids
@@ -284,6 +290,13 @@ def generate_script_spec(
             issues.append("последний caption должен содержать слово 'источник'")
         if not set(script.fact_ids_used).issubset(set(fact_ids)):
             issues.append("fact_ids_used содержит неизвестные id")
+        if not script.fact_ids_used:
+            issues.append("fact_ids_used должен быть заполнен")
+        fact_claims = _fact_claims(factpack)
+        if not script.claims_used:
+            issues.append("claims_used должен быть заполнен")
+        if not set(script.claims_used).issubset(set(fact_claims)):
+            issues.append("claims_used содержит неизвестные claims")
         if not script.on_screen_sources:
             issues.append("on_screen_sources должны быть заполнены")
         elif len(script.on_screen_sources) > 2:
@@ -334,7 +347,8 @@ def generate_script_spec(
 
         rewrite_system = (
             "Ты Writer. Перепиши ScriptSpec с учетом must_fix. "
-            "Не добавляй новых фактов и не используй антитезы."
+            "Не добавляй новых фактов и не используй антитезы. "
+            "Убедись, что claims_used заполнен и соответствует FactPack."
         )
         rewrite_user = {
             "script": script.model_dump(),

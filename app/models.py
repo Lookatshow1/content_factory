@@ -155,6 +155,7 @@ class FactCard(Base):
     __tablename__ = "fact_card"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    external_id = Column(String, nullable=True, unique=True)
     domain = Column(String, nullable=False)
     title = Column(String, nullable=False)
     claim_lines = Column(JSONB, nullable=False)

@@ -34,6 +34,15 @@ class StorageClient:
         )
         return os.path.getsize(local_path)
 
+    def download_file(self, uri: str, local_path: str) -> str:
+        parsed = urlparse(uri)
+        if parsed.scheme != "s3":
+            raise ValueError("unsupported uri")
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        self.client.download_file(bucket, key, local_path)
+        return local_path
+
     def presign_url(self, uri: str, expires_in: int = 900) -> str:
         parsed = urlparse(uri)
         if parsed.scheme != "s3":

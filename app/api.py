@@ -1,17 +1,25 @@
 from uuid import UUID
 
+import shutil
+from datetime import datetime
+
+import redis
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 
 from app import crud
 from app.db import get_session
+from app.models import EpisodeJob, StepRun
 from app.schemas import (
     EpisodeJobDetail,
     FactBankList,
     JobsList,
+    PublishJobsList,
     SeriesList,
 )
 from app.services.storage import StorageClient
 from app.tasks.pipeline import enqueue_chain
+from app.settings import settings
 
 router = APIRouter()
 
@@ -55,7 +63,7 @@ def rerun(job_id: UUID, step_name: str, session=Depends(get_session)):
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
     try:
-        enqueue_chain(job_id, step_name)
+        enqueue_chain(job_id, step_name, pipeline_version=job.pipeline_version)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "queued", "job_id": str(job_id), "from_step": step_name}
@@ -83,3 +91,66 @@ def list_series(session=Depends(get_session)):
 def list_fact_bank(limit: int = 50, session=Depends(get_session)):
     items = crud.list_fact_bank(session, limit=limit)
     return {"items": items}
+
+
+@router.get("/publish/jobs", response_model=PublishJobsList)
+def list_publish_jobs(limit: int = 50, session=Depends(get_session)):
+    items = crud.list_publish_jobs(session, limit=limit)
+    return {"items": items}
+
+
+@router.get("/admin/health")
+def admin_health(session=Depends(get_session)):
+    db_ok = False
+    redis_ok = False
+    minio_ok = False
+    try:
+        session.execute(select(func.now()))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    try:
+        redis_client = redis.from_url(settings.REDIS_URL)
+        redis_ok = redis_client.ping()
+    except Exception:
+        redis_ok = False
+    try:
+        storage = StorageClient()
+        storage.ensure_bucket(settings.MINIO_BUCKET)
+        minio_ok = True
+    except Exception:
+        minio_ok = False
+
+    disk = shutil.disk_usage("/")
+    return {
+        "db": db_ok,
+        "redis": redis_ok,
+        "minio": minio_ok,
+        "disk_free_gb": round(disk.free / (1024**3), 2),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/admin/metrics")
+def admin_metrics(session=Depends(get_session)):
+    job_counts = session.execute(
+        select(EpisodeJob.status, func.count()).group_by(EpisodeJob.status)
+    ).all()
+    status_counts = {status.value: count for status, count in job_counts}
+
+    step_avg = session.execute(
+        select(
+            StepRun.step_name,
+            func.avg(func.extract("epoch", StepRun.finished_at - StepRun.started_at)),
+        ).where(StepRun.finished_at.isnot(None))
+        .group_by(StepRun.step_name)
+    ).all()
+    avg_step_duration = {name.value: round(value or 0, 2) for name, value in step_avg}
+
+    total = sum(status_counts.values()) or 1
+    quarantined = status_counts.get("quarantined", 0)
+    return {
+        "job_counts": status_counts,
+        "avg_step_duration_sec": avg_step_duration,
+        "quarantined_pct": round(quarantined / total * 100, 2),
+    }
