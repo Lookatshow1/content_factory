@@ -5,14 +5,14 @@ class Settings(BaseSettings):
     TZ: str = "Europe/Amsterdam"
     RUN_TIMES: str = "09:30,13:30,18:30"
 
-    DATABASE_URL: str
-    REDIS_URL: str
-    CELERY_BROKER_URL: str
-    CELERY_RESULT_BACKEND: str
+    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@postgres:5432/svf"
+    REDIS_URL: str = "redis://redis:6379/0"
+    CELERY_BROKER_URL: str = "redis://redis:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://redis:6379/2"
 
-    MINIO_ENDPOINT: str
-    MINIO_ACCESS_KEY: str
-    MINIO_SECRET_KEY: str
+    MINIO_ENDPOINT: str = "http://minio:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "svf"
 
     API_BASE_URL: str = "http://api:8000"
