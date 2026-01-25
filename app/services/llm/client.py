@@ -111,7 +111,16 @@ class LLMClient:
         if name == "yandex":
             if not settings.YANDEX_API_KEY or not settings.YANDEX_FOLDER_ID:
                 return None
-            headers = {"Authorization": f"Bearer {settings.YANDEX_API_KEY}", "OpenAI-Project": settings.YANDEX_FOLDER_ID}
+            if "foundationModels" in settings.YANDEX_BASE_URL:
+                headers = {
+                    "Authorization": f"Api-Key {settings.YANDEX_API_KEY}",
+                    "x-folder-id": settings.YANDEX_FOLDER_ID,
+                }
+            else:
+                headers = {
+                    "Authorization": f"Bearer {settings.YANDEX_API_KEY}",
+                    "OpenAI-Project": settings.YANDEX_FOLDER_ID,
+                }
             return ProviderConfig(
                 name="yandex",
                 base_url=settings.YANDEX_BASE_URL,
@@ -147,6 +156,16 @@ class LLMClient:
         seed: Optional[int],
         timeout: Optional[int],
     ) -> Dict[str, Any]:
+        if provider.name == "yandex" and "foundationModels" in provider.base_url:
+            return self._call_yandex_native(
+                provider,
+                messages,
+                model,
+                json_schema=json_schema,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+            )
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -214,6 +233,67 @@ class LLMClient:
                 backoff *= 2
                 last_exc = exc
         raise last_exc
+
+    def _call_yandex_native(
+        self,
+        provider: ProviderConfig,
+        messages: List[dict],
+        model: str,
+        json_schema: Optional[dict],
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        timeout: Optional[int],
+    ) -> Dict[str, Any]:
+        url = f\"{provider.base_url.rstrip('/')}/completion\"
+        payload: Dict[str, Any] = {
+            \"modelUri\": model,
+            \"completionOptions\": {
+                \"temperature\": temperature if temperature is not None else settings.LLM_TEMPERATURE,
+                \"maxTokens\": int(max_tokens or settings.LLM_MAX_TOKENS),
+            },
+            \"messages\": [
+                {\"role\": m.get(\"role\"), \"text\": m.get(\"content\") or \"\"} for m in messages
+            ],
+        }
+        backoff = 1
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=timeout or settings.LLM_TIMEOUT) as client:
+                    resp = client.post(url, headers=provider.headers, json=payload)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    raise httpx.HTTPStatusError(
+                        f\"LLM error {resp.status_code}\", request=resp.request, response=resp
+                    )
+                resp.raise_for_status()
+                data = resp.json()
+                alt = data.get(\"result\", {}).get(\"alternatives\", [{}])[0]
+                msg = alt.get(\"message\", {}) if isinstance(alt, dict) else {}
+                text = msg.get(\"text\") or \"\"
+                parsed_json = None
+                if json_schema:
+                    try:
+                        parsed_json = self._extract_json(text)
+                    except json.JSONDecodeError:
+                        parsed_json = None
+                return {
+                    \"text\": text,
+                    \"json\": parsed_json,
+                    \"usage\": data.get(\"usage\") or data.get(\"result\", {}).get(\"usage\"),
+                    \"raw\": data,
+                    \"provider\": provider.name,
+                    \"model\": model,
+                }
+            except httpx.HTTPStatusError:
+                if attempt == 2:
+                    raise
+                time.sleep(backoff)
+                backoff *= 2
+            except httpx.HTTPError:
+                if attempt == 2:
+                    raise
+                time.sleep(backoff)
+                backoff *= 2
+        raise RuntimeError(\"Yandex LLM request failed\")
 
     def _extract_json(self, content: Optional[str]) -> Optional[dict]:
         if not content:
