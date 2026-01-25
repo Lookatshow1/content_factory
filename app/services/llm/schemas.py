@@ -1,6 +1,7 @@
+import re
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ObjectSpec(BaseModel):
@@ -10,6 +11,14 @@ class ObjectSpec(BaseModel):
     intended_takeaway: str
     angle: str
     constraints: List[str]
+
+    @field_validator("constraints", mode="before")
+    @classmethod
+    def _normalize_constraints(cls, value):
+        if isinstance(value, str):
+            parts = [p.strip() for p in re.split(r"[\\n,;]+", value) if p.strip()]
+            return parts
+        return value
 
 
 class IdeaSpec(BaseModel):
@@ -21,6 +30,14 @@ class IdeaSpec(BaseModel):
     intended_takeaway: str
     angle: str
     constraints: List[str]
+
+    @field_validator("constraints", mode="before")
+    @classmethod
+    def _normalize_constraints(cls, value):
+        if isinstance(value, str):
+            parts = [p.strip() for p in re.split(r"[\\n,;]+", value) if p.strip()]
+            return parts
+        return value
 
 
 class FactSource(BaseModel):
