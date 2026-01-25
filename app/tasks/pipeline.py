@@ -68,7 +68,7 @@ def enqueue_chain(job_id: UUID, start_step: str = "idea", pipeline_version: str 
         "publish_outbox": publish_outbox_step,
         "clip": clip_stub_step,
     }
-    sigs = [task_map[name].s(str(job_id)) for name in task_names]
+    sigs = [task_map[name].si(str(job_id)) for name in task_names]
     chain(*sigs).apply_async()
 
 
