@@ -165,6 +165,7 @@ def _script_prompt(idea_spec: IdeaSpec, factpack: FactPack, series, no_facts: bo
         "idea": idea_spec.model_dump(),
         "facts": [fact.model_dump() for fact in factpack.facts] if not no_facts else [],
         "allowed_sources": _fact_sources(factpack) if not no_facts else [],
+        "allowed_claims": _fact_claims(factpack) if not no_facts else [],
         "series_preamble": _series_prompt(series),
         "fact_mode": "no_facts" if no_facts else "factpack",
         "rules": {
@@ -333,6 +334,7 @@ def generate_script_spec(
             "Конкретная деталь объекта обязательна. "
             "Заполни claims_used тезисами из FactPack. "
             "Длина voiceover_text строго 70-110 слов, если больше - сокращай. "
+            "claims_used должен использовать только значения из allowed_claims. "
             "on_screen_sources должен быть 1-2 строки и содержать только значения из allowed_sources."
         )
         writer_user = _script_prompt(idea_spec, factpack, series, no_facts=no_facts)
@@ -359,12 +361,13 @@ def generate_script_spec(
             "Ты Editor. Отредактируй ScriptSpec: лучше ритм, чище стиль, без штампов. "
             "Не добавляй новых фактов. Не используй антитезы. "
             "Длина voiceover_text строго 70-110 слов, если больше - сокращай. "
-            "Сохраняй on_screen_sources только из allowed_sources."
+            "Сохраняй claims_used только из allowed_claims и on_screen_sources только из allowed_sources."
         )
         editor_user = {
             "script": script.model_dump(),
             "rules": _script_prompt(idea_spec, factpack, series, no_facts=no_facts)["rules"],
             "allowed_sources": _fact_sources(factpack) if not no_facts else [],
+            "allowed_claims": _fact_claims(factpack) if not no_facts else [],
             "must_fix": must_fix or [],
         }
         edited_data = client.generate_json(
@@ -419,6 +422,28 @@ def generate_script_spec(
                     {"issues": style_issues, "validation_issues": validation_issues},
                     False,
                 )
+
+    if validation_issues and not no_facts:
+        allowed_sources = _fact_sources(factpack)
+        allowed_claims_map = {fact.id: fact.claim for fact in factpack.facts}
+        if allowed_sources:
+            script.on_screen_sources = allowed_sources[:2]
+        if script.fact_ids_used:
+            script.claims_used = [
+                allowed_claims_map[fid]
+                for fid in script.fact_ids_used
+                if fid in allowed_claims_map
+            ]
+        issues, style_issues, validation_issues = _validate(script)
+        verdict = _judge(script, issues)
+        must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+        if verdict.pass_ and not must_fix:
+            return (
+                script,
+                verdict.model_dump(by_alias=True),
+                {"issues": style_issues, "validation_issues": validation_issues},
+                False,
+            )
 
     return (
         script,
