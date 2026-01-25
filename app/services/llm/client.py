@@ -143,6 +143,16 @@ class LLMClient:
                 default_model=settings.OPENROUTER_MODEL,
                 headers=headers,
             )
+        if name == "google":
+            if not settings.GOOGLE_API_KEY:
+                return None
+            return ProviderConfig(
+                name="google",
+                base_url=settings.GOOGLE_BASE_URL,
+                api_key=settings.GOOGLE_API_KEY,
+                default_model=settings.GOOGLE_MODEL,
+                headers={},
+            )
         return None
 
     def _call_provider(
@@ -156,6 +166,16 @@ class LLMClient:
         seed: Optional[int],
         timeout: Optional[int],
     ) -> Dict[str, Any]:
+        if provider.name == "google":
+            return self._call_google(
+                provider,
+                messages,
+                model,
+                json_schema=json_schema,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+            )
         if provider.name == "yandex" and "foundationModels" in provider.base_url:
             return self._call_yandex_native(
                 provider,
@@ -233,6 +253,100 @@ class LLMClient:
                 backoff *= 2
                 last_exc = exc
         raise last_exc
+
+    def _call_google(
+        self,
+        provider: ProviderConfig,
+        messages: List[dict],
+        model: str,
+        json_schema: Optional[dict],
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        timeout: Optional[int],
+    ) -> Dict[str, Any]:
+        system_texts = [m.get("content", "") for m in messages if m.get("role") == "system"]
+        system_instruction = " ".join([t.strip() for t in system_texts if t and t.strip()])
+        if json_schema:
+            schema_hint = json.dumps(json_schema, ensure_ascii=False)
+            system_instruction = (
+                f"{system_instruction}\nВерни только JSON строго по схеме: {schema_hint}"
+            ).strip()
+
+        contents = []
+        for message in messages:
+            role = message.get("role")
+            if role == "system":
+                continue
+            if role not in ("user", "assistant"):
+                role = "user"
+            contents.append(
+                {
+                    "role": "user" if role == "user" else "model",
+                    "parts": [{"text": message.get("content") or ""}],
+                }
+            )
+
+        payload: Dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature if temperature is not None else settings.LLM_TEMPERATURE,
+                "maxOutputTokens": int(max_tokens or settings.LLM_MAX_TOKENS),
+            },
+        }
+        if system_instruction:
+            payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
+        if json_schema:
+            payload["generationConfig"]["responseMimeType"] = "application/json"
+
+        url = f"{provider.base_url.rstrip('/')}/models/{model}:generateContent"
+        backoff = 1
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=timeout or settings.LLM_TIMEOUT) as client:
+                    resp = client.post(url, params={"key": provider.api_key}, json=payload)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    raise httpx.HTTPStatusError(
+                        f"LLM error {resp.status_code}", request=resp.request, response=resp
+                    )
+                resp.raise_for_status()
+                data = resp.json()
+                candidate = (data.get("candidates") or [{}])[0]
+                content = candidate.get("content") or {}
+                parts = content.get("parts") or []
+                text = "".join([p.get("text", "") for p in parts if isinstance(p, dict)])
+                parsed_json = None
+                if json_schema:
+                    try:
+                        parsed_json = self._extract_json(text)
+                    except json.JSONDecodeError:
+                        parsed_json = None
+                usage = data.get("usageMetadata") or {}
+                usage_payload = None
+                if usage:
+                    usage_payload = {
+                        "prompt_tokens": usage.get("promptTokenCount"),
+                        "completion_tokens": usage.get("candidatesTokenCount"),
+                        "total_tokens": usage.get("totalTokenCount"),
+                    }
+                return {
+                    "text": text,
+                    "json": parsed_json,
+                    "usage": usage_payload,
+                    "raw": data,
+                    "provider": provider.name,
+                    "model": model,
+                }
+            except httpx.HTTPStatusError:
+                if attempt == 2:
+                    raise
+                time.sleep(backoff)
+                backoff *= 2
+            except httpx.HTTPError:
+                if attempt == 2:
+                    raise
+                time.sleep(backoff)
+                backoff *= 2
+        raise RuntimeError("Google LLM request failed")
 
     def _call_yandex_native(
         self,
@@ -371,7 +485,14 @@ class LLMClient:
             seed=seed,
             timeout=timeout,
         )
-        data = response.get("json") or {}
+        data = response.get("json")
+        if not data and response.get("text"):
+            try:
+                data = self._extract_json(response.get("text"))
+            except json.JSONDecodeError:
+                data = {}
+        if data is None:
+            data = {}
         try:
             self.validate_json(data, validator)
             return data

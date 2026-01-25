@@ -8,7 +8,7 @@
 
 ```
 LLM_PROVIDER_PRIMARY=yandex
-YANDEX_BASE_URL=https://llm.api.cloud.yandex.net/v1
+YANDEX_BASE_URL=https://llm.api.cloud.yandex.net/foundationModels/v1
 YANDEX_API_KEY=...
 YANDEX_FOLDER_ID=...
 YANDEX_MODEL=gpt://<folder_id>/yandexgpt/latest
@@ -17,6 +17,16 @@ LLM_MODEL_RESEARCHER=${YANDEX_MODEL}
 LLM_MODEL_WRITER=${YANDEX_MODEL}
 LLM_MODEL_EDITOR=${YANDEX_MODEL}
 LLM_MODEL_JUDGE=${YANDEX_MODEL}
+```
+
+### Google (Gemini)
+
+```
+LLM_PROVIDER_FALLBACK=google
+GOOGLE_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+GOOGLE_API_KEY=...
+GOOGLE_MODEL=gemini-1.5-pro-latest
+LLM_MODEL_FALLBACK=${GOOGLE_MODEL}
 ```
 
 ### OpenRouter (fallback)
@@ -80,4 +90,5 @@ TIKTOK_ACCESS_TOKEN=...
 RUN_TIMES=09:30,13:30,18:30
 PIPELINE_VERSION=v3
 PIPELINE_ALLOWED=v1,v2,v3
+FORCE_RUBRIC_ID=philosophy_object
 ```

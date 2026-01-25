@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     OPENROUTER_HTTP_REFERER: str = ""
     OPENROUTER_X_TITLE: str = ""
 
+    GOOGLE_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_MODEL: str = "gemini-1.5-pro-latest"
+
     LLM_MODEL_RESEARCHER: str = ""
     LLM_MODEL_WRITER: str = ""
     LLM_MODEL_EDITOR: str = ""
@@ -58,6 +62,7 @@ class Settings(BaseSettings):
     REPEAT_SIMILARITY_THRESHOLD: float = 0.55
     SERIES_MODE: str = "round_robin"
     FACT_MODE: str = "bank_only"
+    FORCE_RUBRIC_ID: str = ""
 
     PIPELINE_VERSION: str = "v3"
     PIPELINE_ALLOWED: str = "v1,v2,v3"
