@@ -6,7 +6,7 @@ from typing import Dict
 import httpx
 
 from app.services.media import probe_video
-from app.services.render_final import render_ffmpeg_kinetic, escape_text
+from app.services.render_final import render_ffmpeg_kinetic, escape_text, wrap_text
 from app.settings import settings
 
 
@@ -82,10 +82,11 @@ def validate_final_video(path: str) -> Dict[str, str]:
 
 
 def overlay_captions(input_path: str, hook: str, ass_path: str, output_path: str):
+    hook_wrapped = wrap_text(hook, max_chars=24, max_lines=3)
     draw = (
         "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-        f"text='{escape_text(hook)}':fontcolor=white:fontsize=70:"
-        "x=(w-text_w)/2:y=140:box=1:boxcolor=black@0.45:boxborderw=16"
+        f"text='{escape_text(hook_wrapped)}':fontcolor=white:fontsize=68:"
+        "x=(w-text_w)/2:y=170:box=1:boxcolor=black@0.45:boxborderw=16:line_spacing=8"
     )
     cmd = [
         "ffmpeg",
@@ -96,12 +97,24 @@ def overlay_captions(input_path: str, hook: str, ass_path: str, output_path: str
         f"{draw},subtitles='{ass_path}'",
         "-c:v",
         "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-profile:v",
+        "high",
+        "-level",
+        "4.1",
         "-pix_fmt",
         "yuv420p",
+        "-movflags",
+        "+faststart",
         "-c:a",
         "aac",
         "-b:a",
-        "160k",
+        "192k",
+        "-ar",
+        "48000",
         output_path,
     ]
     subprocess.run(cmd, check=True)
