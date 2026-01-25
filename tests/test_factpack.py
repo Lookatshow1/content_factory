@@ -4,6 +4,7 @@ from app.services.llm.schemas import FactSource
 
 class FakeCard:
     def __init__(self, domain, title):
+        self.id = f"fake-{title}"
         self.domain = domain
         self.title = title
         self.claim_lines = ["Факт 1", "Факт 2"]
