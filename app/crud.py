@@ -15,7 +15,7 @@ from app.models import (
     FactCard,
     PublishJob,
     PublishStatus,
-    AppSetting,
+    Setting,
     StepName,
     StepRun,
     StepStatus,
@@ -273,8 +273,8 @@ def update_publish_job(session, publish_job_id: UUID, status: PublishStatus, pay
     return job
 
 
-def get_setting(session, key: str) -> Optional[AppSetting]:
-    stmt = select(AppSetting).where(AppSetting.key == key)
+def get_setting(session, key: str) -> Optional[Setting]:
+    stmt = select(Setting).where(Setting.key == key)
     return session.execute(stmt).scalars().first()
 
 
@@ -283,7 +283,7 @@ def set_setting(session, key: str, value_json: dict):
     if setting:
         setting.value_json = value_json
     else:
-        setting = AppSetting(key=key, value_json=value_json)
+        setting = Setting(key=key, value_json=value_json)
         session.add(setting)
     session.commit()
     session.refresh(setting)

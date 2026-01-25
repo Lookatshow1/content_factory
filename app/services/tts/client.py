@@ -96,8 +96,29 @@ class TTSClient:
             voices = data.get("voices", [])
             if not voices:
                 raise ValueError("No voices available")
-            voice_id = voices[0]["voice_id"]
+            voice_id = self._pick_stable_voice(voices)
             crud.set_setting(session, "elevenlabs_voice_id", {"voice_id": voice_id})
             return voice_id
         finally:
             session.close()
+
+    @staticmethod
+    def _pick_stable_voice(voices: list) -> str:
+        best_id = None
+        best_score = -1.0
+        for voice in voices:
+            voice_id = voice.get("voice_id")
+            if not voice_id:
+                continue
+            stability = None
+            if isinstance(voice.get("settings"), dict):
+                stability = voice["settings"].get("stability")
+            if stability is None:
+                stability = voice.get("stability")
+            score = float(stability) if isinstance(stability, (int, float)) else -1.0
+            if score > best_score:
+                best_score = score
+                best_id = voice_id
+        if best_id:
+            return best_id
+        return voices[0]["voice_id"]

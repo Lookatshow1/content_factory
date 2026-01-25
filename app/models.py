@@ -188,8 +188,8 @@ class PublishJob(Base):
     episode_job = relationship("EpisodeJob")
 
 
-class AppSetting(Base):
-    __tablename__ = "app_setting"
+class Setting(Base):
+    __tablename__ = "settings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     key = Column(String, nullable=False, unique=True)
