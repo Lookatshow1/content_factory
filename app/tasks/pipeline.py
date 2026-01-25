@@ -172,8 +172,9 @@ def research_step(self, job_id: str):
         log_event(logger, "step_done", episode_job_id=job_id, step="research")
         return job_id
     except Exception as exc:
+        error_code = "FACTS_MISSING" if str(exc) == "FACTS_MISSING" else None
         if run:
-            _fail_step(session, run.id, str(exc))
+            _fail_step(session, run.id, str(exc), error_code=error_code)
         if self.request.retries >= self.max_retries:
             crud.set_job_status(session, UUID(job_id), EpisodeStatus.quarantined)
             raise
@@ -191,15 +192,21 @@ def script_step(self, job_id: str):
         run = _start_step(session, job_uuid, StepName.script)
         log_event(logger, "step_start", episode_job_id=job_id, step="script")
 
+        job = crud.get_job(session, job_uuid)
+        pipeline_version = job.pipeline_version if job else settings.PIPELINE_VERSION
         idea_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.IdeaSpec)
         fact_art = crud.get_latest_artifact(session, job_uuid, ArtifactKind.FactPack)
         if not idea_art or not idea_art.meta_json:
             raise ValueError("IdeaSpec not found")
-        if not fact_art or not fact_art.meta_json:
-            raise ValueError("FactPack not found")
 
         idea_spec = agents.IdeaSpec.model_validate(idea_art.meta_json)
-        factpack = agents.FactPack.model_validate(fact_art.meta_json)
+        if not fact_art or not fact_art.meta_json:
+            if pipeline_version == "v1":
+                factpack = agents.FactPack(facts=[])
+            else:
+                raise ValueError("FactPack not found")
+        else:
+            factpack = agents.FactPack.model_validate(fact_art.meta_json)
         series = agents.select_series(session)
 
         script, verdict_json, style_payload, style_failed = agents.generate_script_spec(

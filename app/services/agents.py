@@ -3,6 +3,7 @@ import random
 from typing import List, Optional, Tuple
 
 from app import crud
+from app.models import FactCard
 from app.services import idea as idea_service
 from app.services.editorial import select_rubric
 from app.services.llm import LLMClient
@@ -100,7 +101,9 @@ def generate_idea_spec(session, job_id) -> IdeaSpec:
 def _factcard_to_items(card: FactCard, limit: int = 2) -> List[FactItem]:
     items = []
     for idx, claim in enumerate(card.claim_lines[:limit]):
-        sources = card.sources or []
+        sources = (card.sources or [])[:3]
+        if not sources:
+            continue
         first = sources[0] if sources else {"title": "", "url": "", "date": None}
         items.append(
             FactItem(
@@ -130,11 +133,15 @@ def build_factpack(session, idea_spec: IdeaSpec) -> FactPack:
     return FactPack(facts=facts[:10])
 
 
-def _fact_ids(factpack: FactPack) -> List[str]:
+def _fact_ids(factpack: Optional[FactPack]) -> List[str]:
+    if not factpack or not factpack.facts:
+        return []
     return [fact.id for fact in factpack.facts]
 
 
-def _fact_sources(factpack: FactPack) -> List[str]:
+def _fact_sources(factpack: Optional[FactPack]) -> List[str]:
+    if not factpack or not factpack.facts:
+        return []
     sources = []
     for fact in factpack.facts:
         for source in fact.sources or []:
@@ -143,15 +150,18 @@ def _fact_sources(factpack: FactPack) -> List[str]:
     return sources
 
 
-def _fact_claims(factpack: FactPack) -> List[str]:
+def _fact_claims(factpack: Optional[FactPack]) -> List[str]:
+    if not factpack or not factpack.facts:
+        return []
     return [fact.claim for fact in factpack.facts]
 
 
-def _script_prompt(idea_spec: IdeaSpec, factpack: FactPack, series) -> dict:
-    return {
+def _script_prompt(idea_spec: IdeaSpec, factpack: FactPack, series, no_facts: bool) -> dict:
+    payload = {
         "idea": idea_spec.model_dump(),
-        "facts": [fact.model_dump() for fact in factpack.facts],
+        "facts": [fact.model_dump() for fact in factpack.facts] if not no_facts else [],
         "series_preamble": _series_prompt(series),
+        "fact_mode": "no_facts" if no_facts else "factpack",
         "rules": {
             "language": "ru",
             "voiceover_words": "70-110",
@@ -166,6 +176,9 @@ def _script_prompt(idea_spec: IdeaSpec, factpack: FactPack, series) -> dict:
             "claims_used_required": True,
         },
     }
+    if no_facts:
+        payload["rules"]["no_specifics"] = True
+    return payload
 
 
 def _has_disallowed_specifics(text: str) -> bool:
@@ -232,52 +245,12 @@ def generate_script_spec(
         }
         return script, verdict, style_payload, False
 
-    max_iters = 2
+    if factpack is None:
+        factpack = FactPack(facts=[])
+    no_facts = not factpack.facts
     fact_ids = _fact_ids(factpack)
 
-    for attempt in range(max_iters):
-        writer_system = (
-            "Ты Writer. Напиши ScriptSpec для вертикального видео. "
-            "Никаких нейрошаблонов, никаких антитез, живой русский. "
-            "Конкретная деталь объекта обязательна. "
-            "Заполни claims_used тезисами из FactPack."
-        )
-        writer_user = _script_prompt(idea_spec, factpack, series)
-        writer_user["fact_ids_required"] = fact_ids
-
-        script_data = client.generate_json(
-            [
-                {"role": "system", "content": writer_system},
-                {"role": "user", "content": json.dumps(writer_user, ensure_ascii=False)},
-            ],
-            schema=ScriptSpec.model_json_schema(),
-            validator=ScriptSpec,
-            repair_model=settings.LLM_MODEL_EDITOR or settings.YANDEX_MODEL,
-            model=settings.LLM_MODEL_WRITER or settings.YANDEX_MODEL,
-        )
-        script = ScriptSpec.model_validate(script_data)
-
-        editor_system = (
-            "Ты Editor. Отредактируй ScriptSpec: лучше ритм, чище стиль, без штампов. "
-            "Не добавляй новых фактов. Не используй антитезы."
-        )
-        editor_user = {
-            "script": script.model_dump(),
-            "rules": writer_user["rules"],
-            "must_fix": [],
-        }
-        edited_data = client.generate_json(
-            [
-                {"role": "system", "content": editor_system},
-                {"role": "user", "content": json.dumps(editor_user, ensure_ascii=False)},
-            ],
-            schema=ScriptSpec.model_json_schema(),
-            validator=ScriptSpec,
-            repair_model=settings.LLM_MODEL_EDITOR or settings.YANDEX_MODEL,
-            model=settings.LLM_MODEL_EDITOR or settings.YANDEX_MODEL,
-        )
-        script = ScriptSpec.model_validate(edited_data)
-
+    def _validate(script: ScriptSpec) -> Tuple[List[str], List[str]]:
         issues = []
         if not validate_voiceover(script.voiceover_text):
             issues.append("voiceover_text должен быть 70-110 слов")
@@ -288,24 +261,33 @@ def generate_script_spec(
             issues.extend(caption_issues)
         if not script.on_screen_captions or "источник" not in script.on_screen_captions[-1].lower():
             issues.append("последний caption должен содержать слово 'источник'")
-        if not set(script.fact_ids_used).issubset(set(fact_ids)):
-            issues.append("fact_ids_used содержит неизвестные id")
-        if not script.fact_ids_used:
-            issues.append("fact_ids_used должен быть заполнен")
-        fact_claims = _fact_claims(factpack)
-        if not script.claims_used:
-            issues.append("claims_used должен быть заполнен")
-        if not set(script.claims_used).issubset(set(fact_claims)):
-            issues.append("claims_used содержит неизвестные claims")
-        if not script.on_screen_sources:
-            issues.append("on_screen_sources должны быть заполнены")
-        elif len(script.on_screen_sources) > 2:
-            issues.append("on_screen_sources должен быть 1-2 строки")
+        if no_facts:
+            if script.fact_ids_used:
+                issues.append("fact_ids_used должен быть пустым без FactPack")
+            if script.claims_used:
+                issues.append("claims_used должен быть пустым без FactPack")
+            if script.on_screen_sources:
+                issues.append("on_screen_sources должен быть пустым без FactPack")
+            if _has_disallowed_specifics(script.voiceover_text + " " + script.hook):
+                issues.append("конкретика запрещена без FactPack")
         else:
-            allowed_sources = _fact_sources(factpack)
-            if not any(source in " ".join(allowed_sources) for source in script.on_screen_sources):
-                issues.append("on_screen_sources не соответствуют FactPack")
-
+            if not set(script.fact_ids_used).issubset(set(fact_ids)):
+                issues.append("fact_ids_used содержит неизвестные id")
+            if not script.fact_ids_used:
+                issues.append("fact_ids_used должен быть заполнен")
+            fact_claims = _fact_claims(factpack)
+            if not script.claims_used:
+                issues.append("claims_used должен быть заполнен")
+            if not set(script.claims_used).issubset(set(fact_claims)):
+                issues.append("claims_used содержит неизвестные claims")
+            if not script.on_screen_sources:
+                issues.append("on_screen_sources должны быть заполнены")
+            elif len(script.on_screen_sources) > 2:
+                issues.append("on_screen_sources должен быть 1-2 строки")
+            else:
+                allowed_sources = _fact_sources(factpack)
+                if not any(source in " ".join(allowed_sources) for source in script.on_screen_sources):
+                    issues.append("on_screen_sources не соответствуют FactPack")
         style_issues = lint_script(
             script.hook,
             script.voiceover_text,
@@ -313,10 +295,9 @@ def generate_script_spec(
             script.cta,
         )
         issues.extend(style_issues)
+        return issues, style_issues
 
-        if _has_disallowed_specifics(script.voiceover_text + " " + script.hook):
-            issues.append("конкретика запрещена без ссылки")
-
+    def _judge(script: ScriptSpec, issues: List[str]) -> JudgeVerdict:
         judge_system = "Ты Judge. Оцени текст по критериям, верни verdict JSON."
         judge_user = {
             "script": script.model_dump(),
@@ -334,41 +315,73 @@ def generate_script_spec(
             repair_model=settings.LLM_MODEL_EDITOR or settings.YANDEX_MODEL,
             model=settings.LLM_MODEL_JUDGE or settings.YANDEX_MODEL,
         )
-        verdict = JudgeVerdict.model_validate(verdict_data)
+        return JudgeVerdict.model_validate(verdict_data)
 
-        must_fix = list(dict.fromkeys(issues + verdict.must_fix))
-        if verdict.pass_ and not must_fix:
-            style_payload = {"issues": style_issues}
-            return script, verdict.model_dump(by_alias=True), style_payload, False
-
-        if attempt == max_iters - 1:
-            style_payload = {"issues": must_fix}
-            return script, verdict.model_dump(by_alias=True), style_payload, True
-
-        rewrite_system = (
-            "Ты Writer. Перепиши ScriptSpec с учетом must_fix. "
-            "Не добавляй новых фактов и не используй антитезы. "
-            "Убедись, что claims_used заполнен и соответствует FactPack."
+    def _writer_pass(must_fix: Optional[List[str]] = None) -> ScriptSpec:
+        writer_system = (
+            "Ты Writer. Напиши ScriptSpec для вертикального видео. "
+            "Никаких нейрошаблонов, никаких антитез, живой русский. "
+            "Конкретная деталь объекта обязательна. "
+            "Заполни claims_used тезисами из FactPack."
         )
-        rewrite_user = {
-            "script": script.model_dump(),
-            "must_fix": must_fix,
-            "rules": writer_user["rules"],
-        }
+        writer_user = _script_prompt(idea_spec, factpack, series, no_facts=no_facts)
+        if not no_facts:
+            writer_user["fact_ids_required"] = fact_ids
+        if must_fix:
+            writer_user["must_fix"] = must_fix
+        if no_facts:
+            writer_user["must_avoid"] = ["даты", "имена", "цитаты", "книги и главы", "цифры"]
         script_data = client.generate_json(
             [
-                {"role": "system", "content": rewrite_system},
-                {"role": "user", "content": json.dumps(rewrite_user, ensure_ascii=False)},
+                {"role": "system", "content": writer_system},
+                {"role": "user", "content": json.dumps(writer_user, ensure_ascii=False)},
             ],
             schema=ScriptSpec.model_json_schema(),
             validator=ScriptSpec,
             repair_model=settings.LLM_MODEL_EDITOR or settings.YANDEX_MODEL,
             model=settings.LLM_MODEL_WRITER or settings.YANDEX_MODEL,
         )
-        script = ScriptSpec.model_validate(script_data)
+        return ScriptSpec.model_validate(script_data)
 
-    style_payload = {"issues": style_issues}
-    return script, verdict.model_dump(by_alias=True), style_payload, True
+    def _editor_pass(script: ScriptSpec, must_fix: Optional[List[str]] = None) -> ScriptSpec:
+        editor_system = (
+            "Ты Editor. Отредактируй ScriptSpec: лучше ритм, чище стиль, без штампов. "
+            "Не добавляй новых фактов. Не используй антитезы."
+        )
+        editor_user = {
+            "script": script.model_dump(),
+            "rules": _script_prompt(idea_spec, factpack, series, no_facts=no_facts)["rules"],
+            "must_fix": must_fix or [],
+        }
+        edited_data = client.generate_json(
+            [
+                {"role": "system", "content": editor_system},
+                {"role": "user", "content": json.dumps(editor_user, ensure_ascii=False)},
+            ],
+            schema=ScriptSpec.model_json_schema(),
+            validator=ScriptSpec,
+            repair_model=settings.LLM_MODEL_EDITOR or settings.YANDEX_MODEL,
+            model=settings.LLM_MODEL_EDITOR or settings.YANDEX_MODEL,
+        )
+        return ScriptSpec.model_validate(edited_data)
+
+    # First pass
+    script = _editor_pass(_writer_pass())
+    issues, style_issues = _validate(script)
+    verdict = _judge(script, issues)
+    must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+    if verdict.pass_ and not must_fix:
+        return script, verdict.model_dump(by_alias=True), {"issues": style_issues}, False
+
+    # Second pass with must_fix
+    script = _editor_pass(_writer_pass(must_fix), must_fix=must_fix)
+    issues, style_issues = _validate(script)
+    verdict = _judge(script, issues)
+    must_fix = list(dict.fromkeys(issues + verdict.must_fix))
+    if verdict.pass_ and not must_fix:
+        return script, verdict.model_dump(by_alias=True), {"issues": style_issues}, False
+
+    return script, verdict.model_dump(by_alias=True), {"issues": must_fix}, True
 
 
 def generate_storyboard(session, job_id, idea_spec: IdeaSpec, script: ScriptSpec) -> Storyboard:
