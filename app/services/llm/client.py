@@ -176,8 +176,23 @@ class LLMClient:
                     )
                 resp.raise_for_status()
                 data = resp.json()
-                text = data.get("choices", [{}])[0].get("message", {}).get("content")
-                parsed_json = self._extract_json(text) if json_schema else None
+                msg = data.get("choices", [{}])[0].get("message", {})
+                content = msg.get("content")
+                if isinstance(content, list):
+                    parts = []
+                    for part in content:
+                        if isinstance(part, dict):
+                            parts.append(str(part.get("text") or ""))
+                        else:
+                            parts.append(str(part))
+                    content = "".join(parts)
+                text = content if isinstance(content, str) else json.dumps(content or "", ensure_ascii=False)
+                parsed_json = None
+                if json_schema:
+                    try:
+                        parsed_json = self._extract_json(text)
+                    except json.JSONDecodeError:
+                        parsed_json = None
                 return {
                     "text": text,
                     "json": parsed_json,
@@ -288,7 +303,10 @@ class LLMClient:
                 {"role": "system", "content": "Исправь JSON строго по схеме. Без лишних полей."},
                 {
                     "role": "user",
-                    "content": json.dumps({"error": str(err), "original": data}, ensure_ascii=False),
+                    "content": json.dumps(
+                        {"error": str(err), "original": data, "raw_text": response.get(\"text\")},
+                        ensure_ascii=False,
+                    ),
                 },
             ]
             response = self.generate(
