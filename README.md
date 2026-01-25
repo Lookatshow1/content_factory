@@ -30,12 +30,35 @@ make smoke
 
 Скрипт создаст job, дождётся статуса `done`, скачает `ClipFinal` из MinIO и проверит ffprobe (h264 + aac, 1080x1920).
 
+### LLM smoke (проверка structured JSON)
+
+```bash
+make llm_smoke
+```
+
+### Генерация одного выпуска (v3)
+
+```bash
+make gen_one
+```
+
+Результат будет скачан в `./out/clip_final.mp4`, а в выводе будет `job_id` и `clip_url`.
+
+### Серия прогонов (10 выпусков в одной рубрике)
+
+```bash
+make gen_10 RUBRIC_ID=philosophy_object
+```
+
+В выводе будет статистика карантинов: `FACTS_MISSING`, `STYLE_GUARD`, `VALIDATION`, `TTS_EMPTY`.
+
 ### Ручные curl
 
 ```bash
 curl "http://127.0.0.1:8000/jobs?limit=5"
 curl "http://127.0.0.1:8000/jobs/<job_id>"
 curl "http://127.0.0.1:8000/artifacts/<artifact_id>/download"
+curl "http://127.0.0.1:8000/admin/jobs/<job_id>/artifacts/clip_final"
 curl "http://127.0.0.1:8000/publish/jobs?limit=10"
 ```
 
@@ -65,6 +88,7 @@ curl "http://127.0.0.1:8000/admin/metrics"
 
 - **Yandex** (primary): `YANDEX_BASE_URL`, `YANDEX_API_KEY`, `YANDEX_FOLDER_ID`, `YANDEX_MODEL`.
 - **OpenRouter** (fallback): `OPENROUTER_BASE_URL`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`.
+- **Google (Gemini)**: `GOOGLE_BASE_URL`, `GOOGLE_API_KEY`, `GOOGLE_MODEL`.
 
 ### TTS
 
