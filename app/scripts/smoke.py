@@ -4,7 +4,7 @@ from uuid import UUID
 
 from app import crud
 from app.db import SessionLocal
-from app.services.media import probe_video
+from app.services.video_render import validate_final_video
 from app.services.storage import StorageClient
 from app.settings import settings
 from app.tasks.pipeline import enqueue_chain
@@ -50,7 +50,7 @@ def main():
         storage = StorageClient()
         local_path = f"/tmp/{job_id}_final.mp4"
         storage.download_file(clip.uri, local_path)
-        info = probe_video(local_path)
+        info = validate_final_video(local_path)
         print(info)
     finally:
         session.close()
