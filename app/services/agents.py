@@ -145,8 +145,12 @@ def _fact_sources(factpack: Optional[FactPack]) -> List[str]:
     sources = []
     for fact in factpack.facts:
         for source in fact.sources or []:
-            if source.get("title"):
-                sources.append(source["title"])
+            if isinstance(source, dict):
+                title = source.get("title")
+            else:
+                title = getattr(source, "title", None)
+            if title:
+                sources.append(title)
     return sources
 
 
