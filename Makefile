@@ -15,3 +15,12 @@ migrate:
 
 seed:
 	$(COMPOSE) run --rm api python -m app.seed.seed
+
+smoke:
+	$(COMPOSE) run --rm api python -m app.scripts.smoke
+
+test:
+	$(COMPOSE) run --rm api pytest -q
+
+test_e2e:
+	$(COMPOSE) run --rm api python -m app.scripts.smoke
