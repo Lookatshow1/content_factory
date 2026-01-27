@@ -1,0 +1,48 @@
+# FastAPI and ASGI
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.19
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Celery and Redis
+celery[redis]==5.4.0
+redis==5.2.1
+flower==2.0.1
+
+# AI Services
+anthropic==0.42.0
+elevenlabs==1.17.0
+httpx==0.28.1
+aiohttp==3.11.11
+openai==1.58.1
+
+# Video Processing
+ffmpeg-python==0.2.0
+moviepy==2.1.1
+Pillow==11.0.0
+
+# Publishing APIs
+google-api-python-client==2.159.0
+google-auth-oauthlib==1.2.1
+vk-api==11.9.9
+python-telegram-bot==21.9
+requests==2.32.3
+
+# Utils
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+aiofiles==24.1.0
+jinja2==3.1.5
+orjson==3.10.12
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.25.2
+httpx==0.28.1
