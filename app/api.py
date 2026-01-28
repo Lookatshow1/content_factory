@@ -6,7 +6,8 @@ from datetime import datetime
 
 import redis
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
+import html
 from sqlalchemy import func, select
 
 from app import crud
@@ -121,6 +122,175 @@ def download_latest(job_id: Optional[UUID] = None, artifact_id: Optional[UUID] =
     if content_length:
         headers["Content-Length"] = str(content_length)
     return StreamingResponse(_iter(), media_type=content_type, headers=headers)
+
+
+@router.get("/download_clips", response_class=HTMLResponse)
+def download_clips(limit: int = 50, session=Depends(get_session)):
+    rows = session.execute(
+        select(Artifact, EpisodeJob)
+        .join(EpisodeJob, Artifact.episode_job_id == EpisodeJob.id)
+        .where(Artifact.kind == ArtifactKind.ClipFinal)
+        .order_by(EpisodeJob.created_at.desc())
+        .limit(limit)
+    ).all()
+
+    def fmt_bytes(value: Optional[int]) -> str:
+        if not value:
+            return "-"
+        units = ["B", "KB", "MB", "GB"]
+        size = float(value)
+        for unit in units:
+            if size < 1024 or unit == units[-1]:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} GB"
+
+    items = []
+    for artifact, job in rows:
+        items.append(
+            {
+                "job_id": str(job.id),
+                "object_title": job.object_title or "-",
+                "created_at": job.created_at.isoformat() if job.created_at else "-",
+                "status": job.status.value if job.status else "-",
+                "bytes": fmt_bytes(artifact.bytes),
+                "download_url": f"/download?artifact_id={artifact.id}",
+                "job_url": f"/jobs/{job.id}",
+            }
+        )
+
+    rows_html = []
+    for item in items:
+        rows_html.append(
+            "<tr>"
+            f"<td><a href=\"{html.escape(item['job_url'])}\">{html.escape(item['job_id'][:8])}</a></td>"
+            f"<td>{html.escape(item['object_title'])}</td>"
+            f"<td>{html.escape(item['created_at'])}</td>"
+            f"<td>{html.escape(item['status'])}</td>"
+            f"<td>{html.escape(item['bytes'])}</td>"
+            f"<td><a class=\"btn\" href=\"{html.escape(item['download_url'])}\">download</a></td>"
+            "</tr>"
+        )
+
+    html_body = f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clip Downloads</title>
+  <style>
+    :root {{
+      --bg: #0f1217;
+      --panel: #171b22;
+      --text: #e6edf3;
+      --muted: #9aa4b2;
+      --accent: #ff9d4d;
+      --line: #262b36;
+    }}
+    body {{
+      margin: 0;
+      font-family: "IBM Plex Sans", "Inter", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 10% 10%, #1b2130 0%, #0f1217 40%, #0b0e12 100%);
+      color: var(--text);
+    }}
+    .wrap {{
+      max-width: 1100px;
+      margin: 32px auto;
+      padding: 0 20px 40px;
+    }}
+    h1 {{
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      margin: 0 0 10px;
+    }}
+    p {{
+      margin: 0 0 20px;
+      color: var(--muted);
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border-radius: 12px;
+      overflow: hidden;
+    }}
+    th, td {{
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }}
+    th {{
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      background: rgba(255,255,255,0.02);
+    }}
+    tr:last-child td {{
+      border-bottom: none;
+    }}
+    a {{
+      color: var(--text);
+      text-decoration: none;
+    }}
+    a:hover {{
+      color: var(--accent);
+    }}
+    .btn {{
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(255,157,77,0.15);
+      color: var(--accent);
+      font-weight: 600;
+    }}
+    .btn:hover {{
+      background: rgba(255,157,77,0.25);
+    }}
+    .meta {{
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }}
+    .pill {{
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      font-size: 12px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Clip Downloads</h1>
+    <p>Последние сохраненные финальные клипы (ClipFinal). Кликните download, чтобы скачать файл.</p>
+    <div class="meta">
+      <div class="pill">limit={html.escape(str(limit))}</div>
+      <div class="pill">endpoint: /download_clips</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>job</th>
+          <th>object</th>
+          <th>created</th>
+          <th>status</th>
+          <th>size</th>
+          <th>file</th>
+        </tr>
+      </thead>
+      <tbody>
+        {"".join(rows_html) if rows_html else "<tr><td colspan=\"6\">нет ClipFinal артефактов</td></tr>"}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>"""
+
+    return HTMLResponse(html_body)
 
 
 @router.get("/series", response_model=SeriesList)
