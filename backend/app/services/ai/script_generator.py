@@ -1,5 +1,5 @@
 """
-Script Generator using Claude API.
+Script Generator using OpenRouter API.
 Generates viral short-form video scripts optimized for engagement.
 """
 import json
@@ -7,7 +7,7 @@ import re
 from typing import Optional
 from dataclasses import dataclass
 
-import anthropic
+import httpx
 
 from app.core.config import settings
 
@@ -25,9 +25,11 @@ class GeneratedScript:
 
 class ScriptGenerator:
     """
-    Generates engaging short-form video scripts using Claude.
+    Generates engaging short-form video scripts using OpenRouter.
     Optimized for viral content on TikTok, Reels, Shorts, etc.
     """
+
+    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
     SYSTEM_PROMPT = """You are an expert viral content creator specializing in short-form vertical videos.
 Your scripts are known for:
@@ -52,9 +54,39 @@ IMPORTANT RULES:
 9. Duration target: script should take about {duration} seconds to read aloud"""
 
     def __init__(self):
-        if not settings.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY not configured")
-        self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self.api_key = settings.openrouter_api_key
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY not configured")
+
+    async def _call_openrouter(
+        self,
+        messages: list[dict],
+        max_tokens: int = 2000,
+        model: str = "anthropic/claude-sonnet-4"
+    ) -> str:
+        """Make a request to OpenRouter API."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://content-factory.app",
+            "X-Title": "Content Factory"
+        }
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                self.OPENROUTER_API_URL,
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
 
     async def generate(
         self,
@@ -100,20 +132,17 @@ Generate a complete script package in JSON format:
 
 Make it VIRAL. Make it ENGAGING. Make people want to share it."""
 
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            system=self.SYSTEM_PROMPT.format(duration=duration_seconds),
-            messages=[{"role": "user", "content": user_prompt}],
-        )
+        messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT.format(duration=duration_seconds)},
+            {"role": "user", "content": user_prompt}
+        ]
 
-        # Parse the response
-        content = response.content[0].text
+        content = await self._call_openrouter(messages)
 
         # Extract JSON from response
         json_match = re.search(r'\{[\s\S]*\}', content)
         if not json_match:
-            raise ValueError("Failed to parse script JSON from Claude response")
+            raise ValueError("Failed to parse script JSON from response")
 
         data = json.loads(json_match.group())
 
@@ -141,13 +170,10 @@ Make it VIRAL. Make it ENGAGING. Make people want to share it."""
         Returns:
             Improved script
         """
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""Improve this video script based on the feedback.
+        messages = [
+            {
+                "role": "user",
+                "content": f"""Improve this video script based on the feedback.
 
 ORIGINAL SCRIPT:
 {original_script}
@@ -155,12 +181,11 @@ ORIGINAL SCRIPT:
 FEEDBACK:
 {feedback}
 
-Return ONLY the improved script, nothing else.""",
-                }
-            ],
-        )
+Return ONLY the improved script, nothing else."""
+            }
+        ]
 
-        return response.content[0].text
+        return await self._call_openrouter(messages)
 
     async def generate_hashtags(
         self,
@@ -181,13 +206,10 @@ Return ONLY the improved script, nothing else.""",
         Returns:
             List of hashtags (without #)
         """
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=500,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""Generate {count} highly effective hashtags for a {platform} video.
+        messages = [
+            {
+                "role": "user",
+                "content": f"""Generate {count} highly effective hashtags for a {platform} video.
 
 TOPIC: {topic}
 NICHE: {niche}
@@ -198,10 +220,10 @@ Requirements:
 - No # symbol, just the tag text
 - Optimized for discoverability
 
-Return ONLY the hashtags, one per line, no explanations.""",
-                }
-            ],
-        )
+Return ONLY the hashtags, one per line, no explanations."""
+            }
+        ]
 
-        hashtags = response.content[0].text.strip().split("\n")
+        content = await self._call_openrouter(messages, max_tokens=500)
+        hashtags = content.strip().split("\n")
         return [tag.strip().lstrip("#") for tag in hashtags if tag.strip()][:count]

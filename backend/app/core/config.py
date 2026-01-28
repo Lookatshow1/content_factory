@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # AI Services
     anthropic_api_key: Optional[str] = None
+    openrouter_api_key: Optional[str] = None
     elevenlabs_api_key: Optional[str] = None
     heygen_api_key: Optional[str] = None
     fal_api_key: Optional[str] = None
