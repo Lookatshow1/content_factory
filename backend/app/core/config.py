@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     fal_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
 
+    # Proxy settings (for Russia and other restricted regions)
+    # Format: http://user:pass@host:port or socks5://user:pass@host:port
+    http_proxy: Optional[str] = None
+    https_proxy: Optional[str] = None
+
     # Publishing - YouTube
     youtube_client_id: Optional[str] = None
     youtube_client_secret: Optional[str] = None

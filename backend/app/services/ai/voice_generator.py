@@ -4,10 +4,11 @@ Generates natural voiceovers for video scripts.
 """
 import os
 import uuid
+import re
 from typing import Optional
 from pathlib import Path
 
-from elevenlabs import ElevenLabs, VoiceSettings
+import httpx
 
 from app.core.config import settings
 
@@ -17,6 +18,8 @@ class VoiceGenerator:
     Generates voiceovers using ElevenLabs text-to-speech.
     Supports voice cloning and multiple languages.
     """
+
+    ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1"
 
     # Recommended voices for different content types
     VOICE_PRESETS = {
@@ -31,7 +34,23 @@ class VoiceGenerator:
     def __init__(self):
         if not settings.elevenlabs_api_key:
             raise ValueError("ELEVENLABS_API_KEY not configured")
-        self.client = ElevenLabs(api_key=settings.elevenlabs_api_key)
+        self.api_key = settings.elevenlabs_api_key
+
+    def _get_proxy_config(self) -> dict:
+        """Get proxy configuration for httpx."""
+        proxies = {}
+        if settings.http_proxy:
+            proxies["http://"] = settings.http_proxy
+        if settings.https_proxy:
+            proxies["https://"] = settings.https_proxy
+        return proxies if proxies else None
+
+    def _get_headers(self) -> dict:
+        """Get API headers."""
+        return {
+            "xi-api-key": self.api_key,
+            "Content-Type": "application/json",
+        }
 
     async def generate(
         self,
@@ -75,22 +94,30 @@ class VoiceGenerator:
         # Clean up script markers
         clean_text = self._prepare_text(text)
 
-        # Generate audio
-        audio_generator = self.client.text_to_speech.convert(
-            voice_id=voice_id,
-            text=clean_text,
-            model_id="eleven_multilingual_v2",
-            voice_settings=VoiceSettings(
-                stability=stability,
-                similarity_boost=similarity_boost,
-                style=style,
-            ),
-        )
+        # Prepare request
+        url = f"{self.ELEVENLABS_API_URL}/text-to-speech/{voice_id}"
+        payload = {
+            "text": clean_text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": stability,
+                "similarity_boost": similarity_boost,
+                "style": style,
+            }
+        }
 
-        # Save to file
-        with open(output_path, "wb") as f:
-            for chunk in audio_generator:
-                f.write(chunk)
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(timeout=180.0, proxy=proxy_config) as client:
+            response = await client.post(
+                url,
+                headers=self._get_headers(),
+                json=payload
+            )
+            response.raise_for_status()
+
+            # Save audio to file
+            with open(output_path, "wb") as f:
+                f.write(response.content)
 
         return output_path
 
@@ -105,7 +132,6 @@ class VoiceGenerator:
         text = text.replace("[pause]", "...")
 
         # Remove any remaining markers
-        import re
         text = re.sub(r'\[.*?\]', '', text)
 
         return text.strip()
@@ -117,15 +143,22 @@ class VoiceGenerator:
         Returns:
             List of voice info dicts
         """
-        response = self.client.voices.get_all()
+        url = f"{self.ELEVENLABS_API_URL}/voices"
+
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(timeout=30.0, proxy=proxy_config) as client:
+            response = await client.get(url, headers=self._get_headers())
+            response.raise_for_status()
+            data = response.json()
+
         return [
             {
-                "voice_id": voice.voice_id,
-                "name": voice.name,
-                "category": voice.category,
-                "labels": voice.labels,
+                "voice_id": voice["voice_id"],
+                "name": voice["name"],
+                "category": voice.get("category"),
+                "labels": voice.get("labels", {}),
             }
-            for voice in response.voices
+            for voice in data.get("voices", [])
         ]
 
     async def clone_voice(
@@ -145,18 +178,31 @@ class VoiceGenerator:
         Returns:
             Voice ID of the cloned voice
         """
+        url = f"{self.ELEVENLABS_API_URL}/voices/add"
+
+        # Prepare multipart form data
         files = []
         for path in audio_files:
             with open(path, "rb") as f:
-                files.append(f.read())
+                files.append(("files", (os.path.basename(path), f.read(), "audio/mpeg")))
 
-        response = self.client.voices.add(
-            name=name,
-            description=description or f"Cloned voice: {name}",
-            files=files,
-        )
+        data = {
+            "name": name,
+            "description": description or f"Cloned voice: {name}",
+        }
 
-        return response.voice_id
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(timeout=120.0, proxy=proxy_config) as client:
+            response = await client.post(
+                url,
+                headers={"xi-api-key": self.api_key},
+                data=data,
+                files=files
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        return result["voice_id"]
 
     async def get_audio_duration(self, audio_path: str) -> float:
         """

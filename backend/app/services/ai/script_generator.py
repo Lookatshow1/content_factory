@@ -58,6 +58,15 @@ IMPORTANT RULES:
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY not configured")
 
+    def _get_proxy_config(self) -> dict:
+        """Get proxy configuration for httpx."""
+        proxies = {}
+        if settings.http_proxy:
+            proxies["http://"] = settings.http_proxy
+        if settings.https_proxy:
+            proxies["https://"] = settings.https_proxy
+        return proxies if proxies else None
+
     async def _call_openrouter(
         self,
         messages: list[dict],
@@ -78,7 +87,8 @@ IMPORTANT RULES:
             "max_tokens": max_tokens,
         }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(timeout=120.0, proxy=proxy_config) as client:
             response = await client.post(
                 self.OPENROUTER_API_URL,
                 headers=headers,

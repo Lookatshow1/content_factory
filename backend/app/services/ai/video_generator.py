@@ -35,6 +35,19 @@ class VideoGenerator:
         self.heygen_key = settings.heygen_api_key
         self.fal_key = settings.fal_api_key
 
+    def _get_proxy_config(self) -> dict:
+        """Get proxy configuration for httpx."""
+        proxies = {}
+        if settings.http_proxy:
+            proxies["http://"] = settings.http_proxy
+        if settings.https_proxy:
+            proxies["https://"] = settings.https_proxy
+        return proxies if proxies else None
+
+    def _get_aiohttp_proxy(self) -> Optional[str]:
+        """Get proxy URL for aiohttp."""
+        return settings.https_proxy or settings.http_proxy
+
     # =========================================================================
     # HeyGen Avatar Videos
     # =========================================================================
@@ -107,7 +120,8 @@ class VideoGenerator:
         aspect_ratio: str,
     ) -> str:
         """Create video using HeyGen's TTS."""
-        async with httpx.AsyncClient() as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(proxy=proxy_config) as client:
             response = await client.post(
                 f"{self.HEYGEN_API_URL}/v2/video/generate",
                 headers={
@@ -148,7 +162,8 @@ class VideoGenerator:
         # First, upload the audio file
         audio_url = await self._heygen_upload_audio(audio_path)
 
-        async with httpx.AsyncClient() as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(proxy=proxy_config) as client:
             response = await client.post(
                 f"{self.HEYGEN_API_URL}/v2/video/generate",
                 headers={
@@ -179,7 +194,10 @@ class VideoGenerator:
 
     async def _heygen_upload_audio(self, audio_path: str) -> str:
         """Upload audio file to HeyGen."""
-        async with aiohttp.ClientSession() as session:
+        proxy = self._get_aiohttp_proxy()
+        connector = aiohttp.TCPConnector()
+
+        async with aiohttp.ClientSession(connector=connector) as session:
             with open(audio_path, "rb") as f:
                 data = aiohttp.FormData()
                 data.add_field(
@@ -193,6 +211,7 @@ class VideoGenerator:
                     f"{self.HEYGEN_API_URL}/v1/asset",
                     headers={"X-Api-Key": self.heygen_key},
                     data=data,
+                    proxy=proxy,
                 ) as response:
                     result = await response.json()
                     return result["data"]["url"]
@@ -206,7 +225,8 @@ class VideoGenerator:
         """Poll HeyGen until video is ready."""
         start_time = time.time()
 
-        async with httpx.AsyncClient() as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(proxy=proxy_config) as client:
             while time.time() - start_time < timeout:
                 response = await client.get(
                     f"{self.HEYGEN_API_URL}/v1/video_status.get",
@@ -275,7 +295,8 @@ class VideoGenerator:
         aspect_ratio: str,
     ) -> str:
         """Submit video generation request to FAL.ai."""
-        async with httpx.AsyncClient() as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(proxy=proxy_config) as client:
             response = await client.post(
                 f"{self.FAL_API_URL}/fal-ai/kling-video/v1.6/pro/text-to-video",
                 headers={
@@ -302,7 +323,8 @@ class VideoGenerator:
         """Poll FAL.ai until video is ready."""
         start_time = time.time()
 
-        async with httpx.AsyncClient() as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(proxy=proxy_config) as client:
             while time.time() - start_time < timeout:
                 response = await client.get(
                     f"{self.FAL_API_URL}/fal-ai/kling-video/requests/{request_id}/status",
@@ -343,7 +365,8 @@ class VideoGenerator:
 
     async def _download_file(self, url: str, output_path: str):
         """Download a file from URL."""
-        async with httpx.AsyncClient() as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(proxy=proxy_config) as client:
             response = await client.get(url, timeout=120)
             response.raise_for_status()
             with open(output_path, "wb") as f:
@@ -354,7 +377,8 @@ class VideoGenerator:
         if not self.heygen_key:
             return []
 
-        async with httpx.AsyncClient() as client:
+        proxy_config = self._get_proxy_config()
+        async with httpx.AsyncClient(proxy=proxy_config) as client:
             response = await client.get(
                 f"{self.HEYGEN_API_URL}/v2/avatars",
                 headers={"X-Api-Key": self.heygen_key},
