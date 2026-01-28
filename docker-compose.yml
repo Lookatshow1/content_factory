@@ -11,8 +11,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-content_factory}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"  # Не публикуем наружу для безопасности
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-content_factory}"]
       interval: 5s
@@ -26,8 +26,8 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # ports:
+    #   - "6379:6379"  # Не публикуем наружу для безопасности
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -66,7 +66,7 @@ services:
       - ./backend:/app
       - media_data:/app/media
     ports:
-      - "8000:8000"
+      - "8080:8000"  # Backend API на порту 8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,13 +134,13 @@ services:
       dockerfile: Dockerfile
     container_name: cf_frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://77.232.128.173:8080
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
     ports:
-      - "3000:3000"
+      - "8000:3000"  # Frontend на порту 8000
     depends_on:
       - backend
     command: npm run dev

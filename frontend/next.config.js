@@ -3,10 +3,16 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   async rewrites() {
+    // Внутри Docker используем имя сервиса 'backend'
+    const apiUrl = 'http://backend:8000'
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/:path*`,
+        destination: `${apiUrl}/api/:path*`,
+      },
+      {
+        source: '/media/:path*',
+        destination: `${apiUrl}/media/:path*`,
       },
     ]
   },
