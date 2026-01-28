@@ -227,3 +227,25 @@ async def deactivate_content_plan(
             "items": plan.items,
         }
     )
+
+
+@router.post("/{plan_id}/run-now")
+async def run_content_plan_now(
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Immediately generate a video from this content plan."""
+    from app.workers.tasks import generate_video_from_plan
+
+    result = await db.execute(
+        select(ContentPlan).where(ContentPlan.id == plan_id)
+    )
+    plan = result.scalar_one_or_none()
+
+    if not plan:
+        raise HTTPException(status_code=404, detail="Content plan not found")
+
+    # Trigger immediate generation
+    generate_video_from_plan.delay(plan.id)
+
+    return {"status": "ok", "message": "Video generation started"}

@@ -519,3 +519,51 @@ def update_publishing_analytics():
     """Update analytics for published videos."""
     # TODO: Implement fetching stats from each platform's API
     pass
+
+
+@celery_app.task
+def generate_video_from_plan(plan_id: int):
+    """Immediately generate a video from a content plan."""
+    return run_async(_generate_video_from_plan(plan_id))
+
+
+async def _generate_video_from_plan(plan_id: int):
+    """Generate a single video from a content plan immediately."""
+    async with async_session_maker() as db:
+        result = await db.execute(
+            select(ContentPlan).where(ContentPlan.id == plan_id)
+        )
+        plan = result.scalar_one_or_none()
+
+        if not plan:
+            raise ValueError(f"Content plan {plan_id} not found")
+
+        # Select a topic (use first one or niche)
+        import random
+        topic = random.choice(plan.topics) if plan.topics else plan.niche
+
+        # Create video
+        video = Video(
+            title=f"Video about {topic}",
+            topic=topic,
+            niche=plan.niche,
+            style=plan.style,
+            video_type=VideoType(plan.video_type),
+            duration_seconds=plan.duration_seconds,
+            voice_id=plan.voice_id,
+            avatar_id=plan.avatar_id,
+            is_auto_generated=True,
+            status=VideoStatus.PENDING,
+        )
+        db.add(video)
+        await db.commit()
+        await db.refresh(video)
+
+        # Trigger generation pipeline
+        generate_video_pipeline.delay(
+            video_id=video.id,
+            auto_publish=True,
+            platforms=plan.platforms,
+        )
+
+        return {"status": "ok", "video_id": video.id}
