@@ -1,96 +1,63 @@
 'use client'
 
 import { useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { Zap, Wand2 } from 'lucide-react'
+import { Zap, Sparkles, Volume2, Video, Send, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 
-const VIDEO_TYPES = [
-  { id: 'avatar', name: 'AI Avatar', description: 'Talking head with HeyGen' },
-  { id: 'ai_generated', name: 'AI Video', description: 'Generated with Kling AI' },
-]
-
-const NICHES = [
-  'technology',
-  'business',
-  'finance',
-  'health',
-  'education',
-  'entertainment',
-  'lifestyle',
-  'science',
-]
-
-const STYLES = [
-  'educational',
-  'entertaining',
-  'motivational',
-  'news',
-  'tutorial',
-  'storytelling',
-]
-
-const PLATFORMS = [
-  { id: 'youtube', name: 'YouTube Shorts', icon: '📺' },
-  { id: 'tiktok', name: 'TikTok', icon: '🎵' },
-  { id: 'instagram', name: 'Instagram Reels', icon: '📷' },
-  { id: 'vk', name: 'VK Clips', icon: '💬' },
-  { id: 'telegram', name: 'Telegram', icon: '✈️' },
-]
-
 export default function GeneratePage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
+
+  // Form state
   const [topic, setTopic] = useState('')
   const [niche, setNiche] = useState('technology')
   const [style, setStyle] = useState('educational')
-  const [videoType, setVideoType] = useState('avatar')
+  const [tone, setTone] = useState('professional')
   const [duration, setDuration] = useState(45)
+  const [videoType, setVideoType] = useState('avatar')
   const [autoPublish, setAutoPublish] = useState(true)
   const [platforms, setPlatforms] = useState(['youtube', 'tiktok', 'vk', 'telegram'])
 
-  const { data: voices } = useQuery({
-    queryKey: ['voices'],
-    queryFn: () => api.get('/api/v1/system/voices').then(r => r.data.voices),
-  })
-
-  const { data: avatars } = useQuery({
-    queryKey: ['avatars'],
-    queryFn: () => api.get('/api/v1/system/avatars').then(r => r.data.avatars),
-  })
-
-  const [voiceId, setVoiceId] = useState('')
-  const [avatarId, setAvatarId] = useState('')
+  // Custom prompt for more control
+  const [useCustomPrompt, setUseCustomPrompt] = useState(false)
+  const [customPrompt, setCustomPrompt] = useState('')
 
   const generateMutation = useMutation({
-    mutationFn: (data: any) => api.post('/api/v1/videos/generate', data),
-    onSuccess: (response) => {
-      toast.success('Video generation started!')
-      router.push(`/videos`)
+    mutationFn: async (data: any) => {
+      const response = await api.post('/api/v1/videos/generate', data)
+      return response.data
+    },
+    onSuccess: (data) => {
+      toast.success('Генерация запущена!')
+      queryClient.invalidateQueries({ queryKey: ['recent-videos'] })
+      router.push('/videos')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.detail || 'Failed to start generation')
+      const message = error.response?.data?.detail || 'Ошибка при запуске генерации'
+      toast.error(message)
     },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!topic.trim()) {
-      toast.error('Please enter a topic')
+
+    if (!topic.trim() && !customPrompt.trim()) {
+      toast.error('Введите тему для видео')
       return
     }
 
     generateMutation.mutate({
-      topic,
+      topic: useCustomPrompt ? customPrompt : topic,
       niche,
       style,
+      tone,
       video_type: videoType,
       duration_seconds: duration,
-      voice_id: voiceId || undefined,
-      avatar_id: avatarId || undefined,
       auto_publish: autoPublish,
-      platforms,
+      platforms: autoPublish ? platforms : [],
     })
   }
 
@@ -104,175 +71,220 @@ export default function GeneratePage() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
+      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 flex items-center">
           <Zap className="w-8 h-8 mr-3 text-primary-600" />
-          Generate Video
+          Создать видео
         </h1>
         <p className="text-gray-600 mt-1">
-          Create a new video automatically with AI
+          AI автоматически создаст сценарий, озвучку, видео и субтитры
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Topic */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Topic Input */}
         <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">Content</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center">
+              <Sparkles className="w-5 h-5 mr-2 text-yellow-500" />
+              Тема видео
+            </h2>
+            <label className="flex items-center text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={useCustomPrompt}
+                onChange={(e) => setUseCustomPrompt(e.target.checked)}
+                className="mr-2 rounded border-gray-300"
+              />
+              Свой промпт
+            </label>
+          </div>
 
-          <div className="space-y-4">
+          {useCustomPrompt ? (
             <div>
-              <label className="label">Topic *</label>
+              <label className="label">Полный промпт для генерации</label>
+              <textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder="Напишите детальный промпт для Claude. Опишите тему, стиль, ключевые моменты, которые должны быть в видео..."
+                className="input h-32 resize-none"
+                required={useCustomPrompt}
+              />
+              <p className="text-sm text-gray-500 mt-2">
+                Claude получит этот промпт напрямую для генерации сценария
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="label">О чём будет видео?</label>
               <input
                 type="text"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="e.g., How AI is changing the world in 2025"
-                className="input"
-                required
+                placeholder="Например: 5 нейросетей которые изменят 2025 год"
+                className="input text-lg"
+                required={!useCustomPrompt}
               />
-              <p className="text-sm text-gray-500 mt-1">
-                Describe what the video should be about
+              <p className="text-sm text-gray-500 mt-2">
+                AI сам напишет вирусный сценарий на эту тему
               </p>
             </div>
+          )}
+        </div>
 
-            <div className="grid grid-cols-2 gap-4">
+        {/* Settings */}
+        {!useCustomPrompt && (
+          <div className="card p-6">
+            <h2 className="text-lg font-semibold mb-4">Настройки контента</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="label">Niche</label>
+                <label className="label">Ниша</label>
                 <select
                   value={niche}
                   onChange={(e) => setNiche(e.target.value)}
                   className="input"
                 >
-                  {NICHES.map(n => (
-                    <option key={n} value={n}>{n.charAt(0).toUpperCase() + n.slice(1)}</option>
-                  ))}
+                  <option value="technology">Технологии</option>
+                  <option value="business">Бизнес</option>
+                  <option value="finance">Финансы</option>
+                  <option value="education">Образование</option>
+                  <option value="health">Здоровье</option>
+                  <option value="lifestyle">Лайфстайл</option>
+                  <option value="entertainment">Развлечения</option>
+                  <option value="science">Наука</option>
                 </select>
               </div>
 
               <div>
-                <label className="label">Style</label>
+                <label className="label">Стиль</label>
                 <select
                   value={style}
                   onChange={(e) => setStyle(e.target.value)}
                   className="input"
                 >
-                  {STYLES.map(s => (
-                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                  ))}
+                  <option value="educational">Образовательный</option>
+                  <option value="entertaining">Развлекательный</option>
+                  <option value="motivational">Мотивационный</option>
+                  <option value="news">Новостной</option>
+                  <option value="tutorial">Туториал</option>
+                  <option value="storytelling">Сторителлинг</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="label">Тон</label>
+                <select
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value)}
+                  className="input"
+                >
+                  <option value="professional">Профессиональный</option>
+                  <option value="casual">Разговорный</option>
+                  <option value="energetic">Энергичный</option>
+                  <option value="calm">Спокойный</option>
+                  <option value="humorous">С юмором</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="label">Длительность: {duration} сек</label>
+                <input
+                  type="range"
+                  min="20"
+                  max="60"
+                  value={duration}
+                  onChange={(e) => setDuration(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>20 сек</span>
+                  <span>60 сек</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Video Type */}
         <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">Video Type</h2>
+          <h2 className="text-lg font-semibold mb-4 flex items-center">
+            <Video className="w-5 h-5 mr-2 text-purple-500" />
+            Тип видео
+          </h2>
 
-          <div className="grid grid-cols-2 gap-4">
-            {VIDEO_TYPES.map(type => (
-              <button
-                key={type.id}
-                type="button"
-                onClick={() => setVideoType(type.id)}
-                className={`p-4 border rounded-lg text-left transition-colors ${
-                  videoType === type.id
-                    ? 'border-primary-600 bg-primary-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <h3 className="font-medium">{type.name}</h3>
-                <p className="text-sm text-gray-500">{type.description}</p>
-              </button>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => setVideoType('avatar')}
+              className={`p-4 border-2 rounded-xl text-left transition-all ${
+                videoType === 'avatar'
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <div className="text-2xl mb-2">🎭</div>
+              <div className="font-semibold">AI Аватар</div>
+              <div className="text-sm text-gray-500">
+                Говорящая голова через HeyGen
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setVideoType('ai_generated')}
+              className={`p-4 border-2 rounded-xl text-left transition-all ${
+                videoType === 'ai_generated'
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <div className="text-2xl mb-2">🎬</div>
+              <div className="font-semibold">AI Видео</div>
+              <div className="text-sm text-gray-500">
+                Генерация через Kling AI
+              </div>
+            </button>
           </div>
-
-          <div className="mt-4">
-            <label className="label">Duration (seconds)</label>
-            <input
-              type="range"
-              min="15"
-              max="60"
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-              className="w-full"
-            />
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>15s</span>
-              <span className="font-medium">{duration}s</span>
-              <span>60s</span>
-            </div>
-          </div>
-
-          {/* Voice selection */}
-          {voices && (
-            <div className="mt-4">
-              <label className="label">Voice</label>
-              <select
-                value={voiceId}
-                onChange={(e) => setVoiceId(e.target.value)}
-                className="input"
-              >
-                <option value="">Default (Rachel)</option>
-                {voices.map((voice: any) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.name} ({voice.gender})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Avatar selection for avatar type */}
-          {videoType === 'avatar' && avatars && (
-            <div className="mt-4">
-              <label className="label">Avatar</label>
-              <select
-                value={avatarId}
-                onChange={(e) => setAvatarId(e.target.value)}
-                className="input"
-              >
-                <option value="">Default (Angela)</option>
-                {avatars.map((avatar: any) => (
-                  <option key={avatar.id} value={avatar.id}>
-                    {avatar.name} - {avatar.style}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
 
         {/* Publishing */}
         <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">Publishing</h2>
+          <h2 className="text-lg font-semibold mb-4 flex items-center">
+            <Send className="w-5 h-5 mr-2 text-green-500" />
+            Публикация
+          </h2>
 
-          <div className="flex items-center mb-4">
+          <label className="flex items-center mb-4">
             <input
               type="checkbox"
-              id="autoPublish"
               checked={autoPublish}
               onChange={(e) => setAutoPublish(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
             />
-            <label htmlFor="autoPublish" className="ml-2 text-gray-700">
-              Auto-publish when ready
-            </label>
-          </div>
+            <span className="ml-3 text-gray-700">Автопубликация после генерации</span>
+          </label>
 
           {autoPublish && (
             <div>
-              <label className="label mb-2">Platforms</label>
+              <p className="text-sm text-gray-500 mb-3">Выберите платформы:</p>
               <div className="flex flex-wrap gap-2">
-                {PLATFORMS.map(platform => (
+                {[
+                  { id: 'youtube', name: 'YouTube Shorts', icon: '📺' },
+                  { id: 'tiktok', name: 'TikTok', icon: '🎵' },
+                  { id: 'vk', name: 'VK Clips', icon: '💬' },
+                  { id: 'telegram', name: 'Telegram', icon: '✈️' },
+                  { id: 'instagram', name: 'Instagram', icon: '📷' },
+                ].map((platform) => (
                   <button
                     key={platform.id}
                     type="button"
                     onClick={() => togglePlatform(platform.id)}
-                    className={`px-4 py-2 rounded-lg border transition-colors ${
+                    className={`px-4 py-2 rounded-lg border-2 transition-all ${
                       platforms.includes(platform.id)
-                        ? 'border-primary-600 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
                     }`}
                   >
                     <span className="mr-2">{platform.icon}</span>
@@ -289,22 +301,34 @@ export default function GeneratePage() {
           <button
             type="submit"
             disabled={generateMutation.isPending}
-            className="btn-primary px-8 py-3 text-lg"
+            className="btn-primary px-8 py-4 text-lg disabled:opacity-50"
           >
             {generateMutation.isPending ? (
               <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
-                Starting...
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Запускаем...
               </>
             ) : (
               <>
-                <Wand2 className="w-5 h-5 mr-2" />
-                Generate Video
+                <Zap className="w-5 h-5 mr-2" />
+                Создать видео
               </>
             )}
           </button>
         </div>
       </form>
+
+      {/* Info */}
+      <div className="mt-8 p-4 bg-blue-50 rounded-xl text-sm text-blue-800">
+        <strong>Как это работает:</strong>
+        <ol className="mt-2 space-y-1 list-decimal list-inside">
+          <li>Claude напишет вирусный сценарий с хуком</li>
+          <li>ElevenLabs озвучит текст естественным голосом</li>
+          <li>HeyGen или Kling создаст видео</li>
+          <li>Автоматически добавятся субтитры в стиле TikTok</li>
+          <li>Видео опубликуется на выбранных платформах</li>
+        </ol>
+      </div>
     </div>
   )
 }
