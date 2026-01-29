@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     http_proxy: Optional[str] = None
     https_proxy: Optional[str] = None
 
+    # Stock footage APIs (free with attribution)
+    pexels_api_key: Optional[str] = None
+    pixabay_api_key: Optional[str] = None
+
     # Publishing - YouTube
     youtube_client_id: Optional[str] = None
     youtube_client_secret: Optional[str] = None
